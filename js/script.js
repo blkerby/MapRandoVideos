@@ -1,5 +1,3 @@
-const fullWidth = 256;
-const fullHeight = 224;
 var frameOffsets;
 
 function readSlice(file, start, size) {
@@ -160,18 +158,79 @@ function updateCanvas(canvas, rgbData, size, offsetX, offsetY) {
 }
 
 async function updatePreview() {
-    var thumbnail = document.getElementById("thumbnail");
-    var t = parseInt(document.getElementById("thumbnailTime").value);
-    var frame = frameOffsets[t];
     var size = parseInt(document.getElementById("thumbnailSize").value);
-    var offsetX = parseInt(document.getElementById("thumbnailOffsetX").value);
-    var offsetY = parseInt(document.getElementById("thumbnailOffsetY").value);
-    var file = frame[0];
-    var byteOffset = frame[1];
-    var rgbData = await readSlice(file, byteOffset, 256 * 224 * 3);
-    console.log("byteOffset:" + byteOffset);
-    console.log("rgbData:" + rgbData);
-    updateCanvas(thumbnail, rgbData, size, offsetX, offsetY);
+    var thumbnailX = document.getElementById("thumbnailX");
+    var thumbnailY = document.getElementById("thumbnailY");
+    var centerX = parseInt(thumbnailX.value);
+    var centerY = parseInt(thumbnailY.value);
+    var offsetX = centerX - Math.floor(size / 2);
+    var offsetY = centerY - Math.floor(size / 2);
+
+    thumbnailX.min = Math.floor(size / 2);
+    thumbnailX.max = 256 - Math.floor(size / 2);
+    thumbnailY.min = Math.floor(size / 2);
+    thumbnailY.max = 224 - Math.floor(size / 2);
+    if (centerX < thumbnailX.min) {
+        centerX = thumbnailX.min;
+        thumbnailX.value = centerX;
+    }
+    if (centerX > thumbnailX.max) {
+        centerX = thumbnailX.max;
+        thumbnailX.value = centerX;
+    }
+    if (centerY < thumbnailY.min) {
+        centerY = thumbnailY.min;
+        thumbnailY.value = centerY;
+    }
+    if (centerY > thumbnailY.max) {
+        centerY = thumbnailY.max;
+        thumbnailY.value = centerY;
+    }
+
+    var thumbnail = document.getElementById("thumbnail");
+    var thumbnailTime = document.getElementById("thumbnailTime");
+    if (thumbnailTime.value != "") {
+        var t = parseInt(thumbnailTime.value);
+        if (t > frameOffsets.length - 1) {
+            thumbnailTime.value = frameOffsets.length - 1;
+            t = frameOffsets.length - 1;
+        }
+        var frame = frameOffsets[t];
+        var file = frame[0];
+        var byteOffset = frame[1];
+        var rgbData = await readSlice(file, byteOffset, 256 * 224 * 3);
+        updateCanvas(thumbnail, rgbData, size, offsetX, offsetY);
+    }
+    
+    var highlightStart = document.getElementById("highlightStart");
+    var highlightStartTime = document.getElementById("highlightStartTime");
+    if (highlightStartTime.value != "") {
+        var t = parseInt(highlightStartTime.value);
+        if (t > frameOffsets.length - 1) {
+            highlightStartTime.value = frameOffsets.length - 1;
+            t = frameOffsets.length - 1;
+        }
+        var frame = frameOffsets[t];
+        var file = frame[0];
+        var byteOffset = frame[1];
+        var rgbData = await readSlice(file, byteOffset, 256 * 224 * 3);
+        updateCanvas(highlightStart, rgbData, size, offsetX, offsetY);
+    }
+
+    var highlightEnd = document.getElementById("highlightEnd");
+    var highlightEndTime = document.getElementById("highlightEndTime");
+    if (highlightEndTime.value != "") {
+        var t = parseInt(highlightEndTime.value);
+        if (t > frameOffsets.length - 1) {
+            highlightEndTime.value = frameOffsets.length - 1;
+            t = frameOffsets.length - 1;
+        }
+        var frame = frameOffsets[t];
+        var file = frame[0];
+        var byteOffset = frame[1];
+        var rgbData = await readSlice(file, byteOffset, 256 * 224 * 3);
+        updateCanvas(highlightEnd, rgbData, size, offsetX, offsetY);
+    }
 }
 
 async function updateFile() {
@@ -179,6 +238,18 @@ async function updateFile() {
     // TODO: handle multiple files
     var file = videoFile.files[0];
     await loadAVIMetadata(file);
-    document.getElementById("thumbnailTime").value = Math.floor(frameOffsets.length / 2);
+
+    var thumbnailTime = document.getElementById("thumbnailTime")
+    thumbnailTime.value = Math.floor(frameOffsets.length / 2);
+    thumbnailTime.max = totalFrames - 1;
+
+    var highlightStartTime = document.getElementById("highlightStartTime")
+    highlightStartTime.value = Math.floor(frameOffsets.length / 2) - 120;
+    highlightStartTime.max = totalFrames - 1;
+
+    var highlightEndTime = document.getElementById("highlightEndTime")
+    highlightEndTime.value = Math.floor(frameOffsets.length / 2) + 120;
+    highlightEndTime.max = totalFrames - 1;
+
     updatePreview();
 }

@@ -22,41 +22,41 @@
                     <div class="row my-2">
                         <div class="col-4 form-group">
                             <label for="thumbnailSize" class="form-label">Thumbnail size</label>
-                            <input id="thumbnailSize" type="number" class="form-control" name="thumbnail_size" value="128" oninput="updatePreview()">
+                            <input id="thumbnailSize" type="number" class="form-control" name="thumbnail_size" value="128" min="64" max="224" oninput="updatePreview()">
                         </div>                        
                         <div class="col-4 form-group">
-                            <label for="thumbnailOffsetX" class="form-label">Thumbnail offset X</label>
-                            <input id="thumbnailOffsetX" type="number" class="form-control" name="thumbnail_x" value="64" oninput="updatePreview()">
+                            <label for="thumbnailX" class="form-label">Thumbnail center X</label>
+                            <input id="thumbnailX" type="number" class="form-control" name="thumbnail_x" value="128" min="32" max="224" oninput="updatePreview()">
                         </div>
                         <div class="col-4 form-group">
-                            <label for="thumbnailOffsetY" class="form-label">Thumbnail offset Y</label>
-                            <input id="thumbnailOffsetY" type="number" class="form-control" name="thumbnail_y" value="48" oninput="updatePreview()">
+                            <label for="thumbnailY" class="form-label">Thumbnail center Y</label>
+                            <input id="thumbnailY" type="number" class="form-control" name="thumbnail_y" value="112" min="32" max="192" oninput="updatePreview()">
                         </div>
                     </div>
                     <div class="row my-2">
                         <div class="col-4 form-group">
                             <label for="thumbnailTime" class="form-label">Thumbnail time</label>
-                            <input id="thumbnailTime" type="number" class="form-control" name="thumbnail_t" oninput="updatePreview()">
+                            <input id="thumbnailTime" type="number" class="form-control" name="thumbnail_t" min="0" oninput="updatePreview()">
                         </div>                        
                         <div class="col-4 form-group">
                             <label for="highlightStartTime" class="form-label">Highlight start time</label>
-                            <input id="highlightStartTime" type="number" class="form-control" name="highlight_start_t" oninput="updatePreview()">
+                            <input id="highlightStartTime" type="number" class="form-control" name="highlight_start_t" min="0" oninput="updatePreview()">
                         </div>                        
                         <div class="col-4 form-group">
                             <label for="highlightEndTime" class="form-label">Highlight end time</label>
-                            <input id="highlightEndTime" type="number" class="form-control" name="highlight_end_t" oninput="updatePreview()">
+                            <input id="highlightEndTime" type="number" class="form-control" name="highlight_end_t" min="0" oninput="updatePreview()">
                         </div>                        
                     </div>
                     <div class="row my-2">
-                        <div class="col-4">
-                            <canvas id="thumbnail" width="256" height="224"></canvas>
+                        <div class="col-4 d-flex align-items-center justify-content-center">
+                            <canvas id="thumbnail" width="224" height="224"></canvas>
                         </div>                        
-                        <div class="col-4">
-                            <canvas id="highlightStart"></canvas>
+                        <div class="col-4 d-flex align-items-center justify-content-center">
+                            <canvas id="highlightStart" width="224" height="224"></canvas>
                         </div>                        
-                        <div class="col-4">
-                            <canvas id="highlightEnd"></canvas>
-                        </div>
+                        <div class="col-4 d-flex align-items-center justify-content-center">
+                            <canvas id="highlightEnd" width="224" height="224"></canvas>
+                        </div>                        
                     </div>
                     <div class="form-check my-2">
                         <input id="copyright_waiver" type="checkbox" class="form-check-input" name="copyright_waiver" required>
