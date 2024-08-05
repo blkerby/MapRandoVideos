@@ -143,10 +143,6 @@ function updateCanvas(canvas, rgbData, size, offsetX, offsetY) {
     for (let y = 0; y < size; y += 1) {
         for (let x = 0; x < size; x += 1) {
             let srcIdx = ((223 - (offsetY + y)) * 256 + offsetX + x) * 3;
-            // console.log(`${offsetY}`);
-            // console.log(`${y}`);
-            // console.log(`${(223 - (offsetY + y))}`);
-            // console.log(`${size}, ${offsetX}, ${offsetY}: ${x}, ${y}, ${srcIdx}, ${dstIdx}`);
             imageData.data[dstIdx] = rgbData.getUint8(srcIdx + 1);     // R
             imageData.data[dstIdx + 1] = rgbData.getUint8(srcIdx);     // G
             imageData.data[dstIdx + 2] = rgbData.getUint8(srcIdx + 2); // B
@@ -201,7 +197,7 @@ async function updatePreview() {
         var rgbData = await readSlice(file, byteOffset, 256 * 224 * 3);
         updateCanvas(thumbnail, rgbData, size, offsetX, offsetY);
     }
-    
+
     var highlightStart = document.getElementById("highlightStart");
     var highlightStartTime = document.getElementById("highlightStartTime");
     if (highlightStartTime.value != "") {
