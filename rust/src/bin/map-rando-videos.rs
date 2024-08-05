@@ -33,6 +33,7 @@ async fn main() {
             .app_data(app_data.clone())
             .wrap(Logger::default())
             .service(home)
+            .service(actix_files::Files::new("/js", "../js"))
     })
     .bind("0.0.0.0:8081")
     .unwrap()

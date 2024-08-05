@@ -1,0 +1,28 @@
+<!-- Button trigger modal -->
+<button type="button" class="btn btn-primary mr-1 px-2 py-1" data-bs-toggle="modal" data-bs-target="#loginModal">
+    Log In
+</button>
+  <!-- Modal -->
+  <div class="modal" id="loginModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 class="modal-title fs-5">Sign In or Create Account</h1>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form method="post">
+            <div class="modal-body">
+                <label for="username" class="form-label">Username</label>
+                <input id="username" type="text" class="form-control" name="username">
+                <label for="password" class="form-label">Password</label>
+                <input id="password" type="password" class="form-control" name="password">
+            </div>
+            <div class="modal-footer">
+                <input type="submit" class="btn btn-primary" value="Sign In" formaction="/sign-in">
+                <input type="submit" class="btn btn-success" value="Create Account" formaction="/create-account">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </form>
+        </div>
+    </div>
+  </div>

@@ -1,19 +1,21 @@
-CREATE TABLE users (
+CREATE TABLE account (
     id serial primary key,
     username varchar(100) NOT NULL,
     password_hash varchar(100) NOT NULL,
+    login_ts timestamp,
+    login_token varchar(100),
     discord_username varchar(100),
     permission varchar(100) NOT NULL
 );
 
-CREATE TABLE videos (
+CREATE TABLE video (
     id serial primary key,
     video_hash varchar(100) NOT NULL,
     frame_count integer,
     created_ts timestamp,
-    created_user_id integer,
+    created_account_id integer,
     updated_ts timestamp,
-    updated_user_id integer,
+    updated_account_id integer,
     room_id integer,
     from_node_id integer,
     to_node_id integer,

@@ -1,4 +1,11 @@
 services:
+  map_rando_videos:
+    container_name: map_rando_videos
+    image: map-rando-videos
+    build:
+      context: .
+    ports:
+      - '8081:8081'
   db:
     image: postgres:16.3
     container_name: postgres

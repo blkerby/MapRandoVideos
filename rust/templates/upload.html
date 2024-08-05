@@ -1,0 +1,75 @@
+<!-- Button trigger modal -->
+<button type="button" class="btn btn-primary mr-1 px-2 py-1" data-bs-toggle="modal" data-bs-target="#uploadModal">
+    Upload Video
+</button>
+<!-- Modal -->
+<div class="modal" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5">Upload Video</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" onsubmit="return false;">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <input id="video_file" type="file" class="form-control" name="video_file" accept=".avi" onchange="updateFile()">
+                    </div>
+                    <div class="form-group">
+                        <label for="note" class="form-label">Note</label>
+                        <input id="note" type="textarea" class="form-control" name="note" maxlength=8000>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-4 form-group">
+                            <label for="thumbnailSize" class="form-label">Thumbnail size</label>
+                            <input id="thumbnailSize" type="number" class="form-control" name="thumbnail_size" value="128" oninput="updatePreview()">
+                        </div>                        
+                        <div class="col-4 form-group">
+                            <label for="thumbnailOffsetX" class="form-label">Thumbnail offset X</label>
+                            <input id="thumbnailOffsetX" type="number" class="form-control" name="thumbnail_x" value="64" oninput="updatePreview()">
+                        </div>
+                        <div class="col-4 form-group">
+                            <label for="thumbnailOffsetY" class="form-label">Thumbnail offset Y</label>
+                            <input id="thumbnailOffsetY" type="number" class="form-control" name="thumbnail_y" value="48" oninput="updatePreview()">
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-4 form-group">
+                            <label for="thumbnailTime" class="form-label">Thumbnail time</label>
+                            <input id="thumbnailTime" type="number" class="form-control" name="thumbnail_t" oninput="updatePreview()">
+                        </div>                        
+                        <div class="col-4 form-group">
+                            <label for="highlightStartTime" class="form-label">Highlight start time</label>
+                            <input id="highlightStartTime" type="number" class="form-control" name="highlight_start_t" oninput="updatePreview()">
+                        </div>                        
+                        <div class="col-4 form-group">
+                            <label for="highlightEndTime" class="form-label">Highlight end time</label>
+                            <input id="highlightEndTime" type="number" class="form-control" name="highlight_end_t" oninput="updatePreview()">
+                        </div>                        
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-4">
+                            <canvas id="thumbnail" width="256" height="224"></canvas>
+                        </div>                        
+                        <div class="col-4">
+                            <canvas id="highlightStart"></canvas>
+                        </div>                        
+                        <div class="col-4">
+                            <canvas id="highlightEnd"></canvas>
+                        </div>
+                    </div>
+                    <div class="form-check my-2">
+                        <input id="copyright_waiver" type="checkbox" class="form-check-input" name="copyright_waiver" required>
+                        <label for="copyright_waiver" class="form-check-label">I dedicate this video to public domain, under the 
+                            <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.en">Creative Commons CC0 1.0 Universal code</a>.
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="submit" class="btn btn-primary" value="Submit Video" formaction="/submit-video">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
