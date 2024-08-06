@@ -1,5 +1,8 @@
 const smMetadataUrl = "https://storage.googleapis.com/map-rando-videos/";
 var frameOffsets;
+var animationEnabled = false;
+var animationFrameResolution = 3;
+var animationFrame = 0;
 
 function readSlice(file, start, size) {
     return new Promise(function(resolve, reject) {
@@ -154,6 +157,29 @@ function updateCanvas(canvas, rgbData, size, offsetX, offsetY) {
     ctx.putImageData(imageData, 0, 0);
 }
 
+async function updateAnimation() {
+    var size = parseInt(document.getElementById("thumbnailSize").value);
+    var thumbnail = document.getElementById("thumbnail");
+    var startFrame = parseInt(document.getElementById("highlightStartTime").value);
+    var endFrame = parseInt(document.getElementById("highlightEndTime").value);
+    var thumbnailX = document.getElementById("thumbnailX");
+    var thumbnailY = document.getElementById("thumbnailY");
+    var centerX = parseInt(thumbnailX.value);
+    var centerY = parseInt(thumbnailY.value);
+    var offsetX = centerX - Math.floor(size / 2);
+    var offsetY = centerY - Math.floor(size / 2);
+
+    if (animationFrame > endFrame || animationFrame < startFrame) {
+        animationFrame = startFrame;
+    }
+    var frame = frameOffsets[animationFrame];
+    var file = frame[0];
+    var byteOffset = frame[1];
+    var rgbData = await readSlice(file, byteOffset, 256 * 224 * 3);
+    updateCanvas(thumbnail, rgbData, size, offsetX, offsetY);
+    animationFrame += animationFrameResolution;
+}
+
 async function updatePreview() {
     var size = parseInt(document.getElementById("thumbnailSize").value);
     var thumbnailX = document.getElementById("thumbnailX");
@@ -163,40 +189,21 @@ async function updatePreview() {
     var offsetX = centerX - Math.floor(size / 2);
     var offsetY = centerY - Math.floor(size / 2);
 
-    thumbnailX.min = Math.floor(size / 2);
-    thumbnailX.max = 256 - Math.floor(size / 2);
-    thumbnailY.min = Math.floor(size / 2);
-    thumbnailY.max = 224 - Math.floor(size / 2);
-    if (centerX < thumbnailX.min) {
-        centerX = thumbnailX.min;
-        thumbnailX.value = centerX;
-    }
-    if (centerX > thumbnailX.max) {
-        centerX = thumbnailX.max;
-        thumbnailX.value = centerX;
-    }
-    if (centerY < thumbnailY.min) {
-        centerY = thumbnailY.min;
-        thumbnailY.value = centerY;
-    }
-    if (centerY > thumbnailY.max) {
-        centerY = thumbnailY.max;
-        thumbnailY.value = centerY;
-    }
-
-    var thumbnail = document.getElementById("thumbnail");
-    var thumbnailTime = document.getElementById("thumbnailTime");
-    if (thumbnailTime.value != "") {
-        var t = parseInt(thumbnailTime.value);
-        if (t > frameOffsets.length - 1) {
-            thumbnailTime.value = frameOffsets.length - 1;
-            t = frameOffsets.length - 1;
-        }
-        var frame = frameOffsets[t];
-        var file = frame[0];
-        var byteOffset = frame[1];
-        var rgbData = await readSlice(file, byteOffset, 256 * 224 * 3);
-        updateCanvas(thumbnail, rgbData, size, offsetX, offsetY);
+    if (!animationEnabled) {
+        var thumbnail = document.getElementById("thumbnail");
+        var thumbnailTime = document.getElementById("thumbnailTime");
+        if (thumbnailTime.value != "") {
+            var t = parseInt(thumbnailTime.value);
+            if (t > frameOffsets.length - 1) {
+                thumbnailTime.value = frameOffsets.length - 1;
+                t = frameOffsets.length - 1;
+            }
+            var frame = frameOffsets[t];
+            var file = frame[0];
+            var byteOffset = frame[1];
+            var rgbData = await readSlice(file, byteOffset, 256 * 224 * 3);
+            updateCanvas(thumbnail, rgbData, size, offsetX, offsetY);
+        }    
     }
 
     var highlightStart = document.getElementById("highlightStart");
@@ -230,6 +237,36 @@ async function updatePreview() {
     }
 }
 
+async function updateControls() {
+    var size = parseInt(document.getElementById("thumbnailSize").value);
+    var thumbnailX = document.getElementById("thumbnailX");
+    var thumbnailY = document.getElementById("thumbnailY");
+    var centerX = parseInt(thumbnailX.value);
+    var centerY = parseInt(thumbnailY.value);
+
+    thumbnailX.min = Math.floor(size / 2);
+    thumbnailX.max = 256 - Math.floor(size / 2);
+    thumbnailY.min = Math.floor(size / 2);
+    thumbnailY.max = 224 - Math.floor(size / 2);
+    if (centerX < thumbnailX.min) {
+        centerX = thumbnailX.min;
+        thumbnailX.value = centerX;
+    }
+    if (centerX > thumbnailX.max) {
+        centerX = thumbnailX.max;
+        thumbnailX.value = centerX;
+    }
+    if (centerY < thumbnailY.min) {
+        centerY = thumbnailY.min;
+        thumbnailY.value = centerY;
+    }
+    if (centerY > thumbnailY.max) {
+        centerY = thumbnailY.max;
+        thumbnailY.value = centerY;
+    }
+    updatePreview();
+}
+
 async function updateFile() {
     var videoFile = document.getElementById("videoFile");
     // TODO: handle multiple files
@@ -241,11 +278,11 @@ async function updateFile() {
     thumbnailTime.max = totalFrames - 1;
 
     var highlightStartTime = document.getElementById("highlightStartTime")
-    highlightStartTime.value = Math.floor(frameOffsets.length / 2) - 120;
+    highlightStartTime.value = 180;
     highlightStartTime.max = totalFrames - 1;
 
     var highlightEndTime = document.getElementById("highlightEndTime")
-    highlightEndTime.value = Math.floor(frameOffsets.length / 2) + 120;
+    highlightEndTime.value = 420;
     highlightEndTime.max = totalFrames - 1;
 
     updatePreview();
@@ -296,8 +333,27 @@ async function updateNodeOptions() {
             toNode.appendChild(opt);
         }
     }
-    console.log("update node options");
+}
+
+function enableAnimation() {
+    animationEnabled = true;
+}
+
+function disableAnimation() {
+    animationEnabled = false;
+    updatePreview();
+}
+
+async function animateLoop() {
+    while (true) {
+        await new Promise(r => setTimeout(r, 1000 / 60 * animationFrameResolution));
+        if (animationEnabled) {
+            updateAnimation();
+        }
+    }
+    console.log("animate");
 }
 
 updateRoomOptions();
 updateFile();
+animateLoop();
