@@ -1,3 +1,4 @@
+const smMetadataUrl = "https://storage.googleapis.com/map-rando-videos/";
 var frameOffsets;
 
 function readSlice(file, start, size) {
@@ -230,7 +231,7 @@ async function updatePreview() {
 }
 
 async function updateFile() {
-    var videoFile = document.getElementById("video_file");
+    var videoFile = document.getElementById("videoFile");
     // TODO: handle multiple files
     var file = videoFile.files[0];
     await loadAVIMetadata(file);
@@ -249,3 +250,54 @@ async function updateFile() {
 
     updatePreview();
 }
+
+async function updateRoomOptions() {
+    let overviewResponse = await fetch(smMetadataUrl + "rooms.json");
+    if (!overviewResponse.ok) {
+        throw new Error(`Error fetching rooms.json: ${overviewResponse.status}`);
+    }
+    let overview = await overviewResponse.json();
+    let roomSelect = document.getElementById("room");
+    for (const areaData of overview.areas) {
+        let optGroup = document.createElement('optgroup');
+        optGroup.label = areaData.name;
+        for (const roomData of areaData.rooms) {
+            var opt = document.createElement('option');
+            opt.value = roomData.id;
+            opt.innerText = roomData.name;
+            optGroup.appendChild(opt);    
+        }
+        roomSelect.appendChild(optGroup);
+    }
+}
+
+async function updateNodeOptions() {
+    let roomId = document.getElementById("room").value;
+    let fromNode = document.getElementById("fromNode");
+    let toNode = document.getElementById("toNode");
+    
+    fromNode.options.length = 1;
+    toNode.options.length = 1;
+    if (roomId != "") {
+        let roomResponse = await fetch(smMetadataUrl + `room/${roomId}.json`);
+        if (!roomResponse.ok) {
+            throw new Error(`Error fetching room/${roomId}.json: ${roomResponse.status}`);
+        }
+        let room = await roomResponse.json();
+        for (const node of room.nodes) {
+            var opt = document.createElement('option');
+            opt.value = node.id;
+            opt.innerText = `${node.id}: ${node.name}`;
+            fromNode.appendChild(opt);
+
+            var opt = document.createElement('option');
+            opt.value = node.id;
+            opt.innerText = `${node.id}: ${node.name}`;
+            toNode.appendChild(opt);
+        }
+    }
+    console.log("update node options");
+}
+
+updateRoomOptions();
+updateFile();
