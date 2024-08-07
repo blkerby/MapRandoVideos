@@ -59,6 +59,7 @@ struct NodeData {
 
 #[derive(Serialize, Clone)]
 struct StratData {
+    id: i64,
     from_node_id: i64,
     to_node_id: i64,
     name: String,
@@ -130,11 +131,17 @@ async fn process_room(room_json: &serde_json::Value, object_store: &Box<dyn Obje
 
     let mut strat_listing: Vec<StratData> = vec![];
     for strat_json in room_json["strats"].as_array().unwrap() {
+        let id = strat_json["id"].as_i64().unwrap_or(0);
+        if id == 0 {
+            // Skip strats that don't yet have an ID assigned.
+            continue;
+        }
         let link = strat_json["link"].as_array().unwrap();
         let from_node_id = link[0].as_i64().unwrap();
         let to_node_id = link[1].as_i64().unwrap();
         let strat_name = strat_json["name"].as_str().unwrap().to_string();
         strat_listing.push(StratData {
+            id,
             from_node_id,
             to_node_id,
             name: strat_name,

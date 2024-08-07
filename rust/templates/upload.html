@@ -35,7 +35,7 @@
                             <label for="fromNode" class="col-form-label">From</label>
                         </div>
                         <div class="col-lg-11 col-sm-10">
-                            <select id="fromNode" class="form-select" name="from_node" autocomplete="off">
+                            <select id="fromNode" class="form-select" name="from_node_id" onchange="updateStratOptions()" autocomplete="off">
                                 <option value="">Select "from" node</option>
                             </select>
                         </div>
@@ -45,8 +45,18 @@
                             <label for="toNode" class="col-form-label">To</label>
                         </div>
                         <div class="col-lg-11 col-sm-10">
-                            <select id="toNode" class="form-select" name="to_node" autocomplete="off">
+                            <select id="toNode" class="form-select" name="to_node_id" onchange="updateStratOptions()" autocomplete="off">
                                 <option value="">Select "to" node</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                            <label for="strat" class="col-form-label">Strat</label>
+                        </div>
+                        <div class="col-lg-11 col-sm-10">
+                            <select id="strat" class="form-select" name="strat_id" autocomplete="off">
+                                <option value="">Select strat</option>
                             </select>
                         </div>
                     </div>

@@ -3,6 +3,7 @@ var frameOffsets;
 var animationEnabled = false;
 var animationFrameResolution = 3;
 var animationFrame = 0;
+var roomSummary;
 
 function readSlice(file, start, size) {
     return new Promise(function(resolve, reject) {
@@ -320,16 +321,19 @@ async function updateNodeOptions() {
     let roomId = document.getElementById("room").value;
     let fromNode = document.getElementById("fromNode");
     let toNode = document.getElementById("toNode");
+    let strat = document.getElementById("strat");
     
     fromNode.options.length = 1;
     toNode.options.length = 1;
+    strat.options.length = 1;
+
     if (roomId != "") {
         let roomResponse = await fetch(smMetadataUrl + `room/${roomId}.json`);
         if (!roomResponse.ok) {
             throw new Error(`Error fetching room/${roomId}.json: ${roomResponse.status}`);
         }
-        let room = await roomResponse.json();
-        for (const node of room.nodes) {
+        roomSummary = await roomResponse.json();
+        for (const node of roomSummary.nodes) {
             var opt = document.createElement('option');
             opt.value = node.id;
             opt.innerText = `${node.id}: ${node.name}`;
@@ -339,6 +343,22 @@ async function updateNodeOptions() {
             opt.value = node.id;
             opt.innerText = `${node.id}: ${node.name}`;
             toNode.appendChild(opt);
+        }
+    }
+}
+
+async function updateStratOptions() {
+    let stratSelect = document.getElementById("strat");
+    let fromNodeId = document.getElementById("fromNode").value;
+    let toNodeId = document.getElementById("toNode").value;
+
+    stratSelect.options.length = 1;
+    for (const strat of roomSummary.strats) {
+        if (strat.from_node_id == fromNodeId && strat.to_node_id == toNodeId) {
+            var opt = document.createElement('option');
+            opt.value = strat.id;
+            opt.innerText = `${strat.id}: ${strat.name}`;
+            stratSelect.appendChild(opt);    
         }
     }
 }
