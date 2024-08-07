@@ -3,7 +3,7 @@
     Upload Video
 </button>
 <!-- Modal -->
-<div class="modal" id="uploadModal" tabindex="-1">
+<div class="modal" id="uploadModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
@@ -12,7 +12,7 @@
             </div>
             <form method="post" onsubmit="return false;">
                 <div class="modal-body">
-                    <div class="row align-items-center my-2">
+                    <div class="row mb-2">
                         <div class="col-lg-1 col-sm-2 text-sm-end">
                             <label for="videoFile" class="col-form-label">Video</label>
                         </div>
@@ -20,7 +20,7 @@
                             <input id="videoFile" type="file" class="form-control" name="video_file" accept=".avi" onchange="updateFile()" autocomplete="off">
                         </div>
                     </div>
-                    <div class="row align-items-center my-2">
+                    <div class="row my-2">
                         <div class="col-lg-1 col-sm-2 text-sm-end">
                             <label for="room" class="col-form-label">Room</label>
                         </div>
@@ -30,7 +30,7 @@
                             </select>    
                         </div>
                     </div>
-                    <div class="row align-items-center my-2">
+                    <div class="row my-2">
                         <div class="col-lg-1 col-sm-2 text-sm-end">
                             <label for="fromNode" class="col-form-label">From</label>
                         </div>
@@ -40,7 +40,7 @@
                             </select>
                         </div>
                     </div>
-                    <div class="row align-items-center my-2">
+                    <div class="row my-2">
                         <div class="col-lg-1 col-sm-2 text-sm-end">
                             <label for="toNode" class="col-form-label">To</label>
                         </div>
@@ -50,74 +50,74 @@
                             </select>
                         </div>
                     </div>
-                    <div class="row align-items-center my-2">
+                    <div class="row my-2">
                         <div class="col-lg-1 col-sm-2 text-sm-end">
                             <label for="note" class="col-form-label">Note</label>
                         </div>
                         <div class="col-lg-11 col-sm-10">
-                            <input id="note" type="textarea" class="form-control" name="note" maxlength=8000 autocomplete="off">
+                            <textarea id="note" class="form-control" name="note" maxlength=8000 autocomplete="off"></textarea>
                         </div>
                     </div>
                     <div class="row my-2">
                         <div class="col-4">
-                            <div class="row align-items-center">
+                            <div class="row">
                                 <div class="col-lg-6 text-lg-end">
                                     <label for="thumbnailSize" class="col-form-label">Crop size</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailSize" type="number" class="form-control" name="thumbnail_size" value="128" min="64" max="224" oninput="updateControls()" autocomplete="off">
+                                    <input id="thumbnailSize" type="number" class="form-control" name="thumbnail_size" value="128" min="64" max="224" onchange="updateControls()" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
                         <div class="col-4">
-                            <div class="row align-items-center">
+                            <div class="row">
                                 <div class="col-lg-6 text-lg-end">
                                     <label for="thumbnailX" class="col-form-label">Crop center X</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailX" type="number" class="form-control" name="thumbnail_x" value="128" min="32" max="224" oninput="updateControls()" autocomplete="off">
+                                    <input id="thumbnailX" type="number" class="form-control" name="thumbnail_x" value="128" min="32" max="224" onchange="updateControls()" autocomplete="off">
                                 </div>
                             </div>
                         </div>
                         <div class="col-4">
-                            <div class="row align-items-center">
+                            <div class="row">
                                 <div class="col-lg-6 text-lg-end">
                                     <label for="thumbnailY" class="col-form-label">Crop center Y</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailY" type="number" class="form-control" name="thumbnail_y" value="112" min="32" max="192" oninput="updateControls()" autocomplete="off">
+                                    <input id="thumbnailY" type="number" class="form-control" name="thumbnail_y" value="112" min="32" max="192" onchange="updateControls()" autocomplete="off">
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="row my-2">
                         <div class="col-4">
-                            <div class="row align-items-center">
+                            <div class="row">
                                 <div class="col-lg-6 text-lg-end">
                                     <label for="thumbnailTime" class="col-form-label">Static time</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailTime" type="number" class="form-control" name="thumbnail_t" min="0" oninput="updateControls()" autocomplete="off">
+                                    <input id="thumbnailTime" type="number" class="form-control" name="thumbnail_t" min="0" onchange="updateControls()" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
                         <div class="col-4">
-                            <div class="row align-items-center">
+                            <div class="row">
                                 <div class="col-lg-6 text-lg-end">
                                     <label for="highlightStartTime" class="col-form-label">Animate start</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="highlightStartTime" type="number" class="form-control" name="highlight_start_t" min="0" oninput="updateControls()" autocomplete="off">
+                                    <input id="highlightStartTime" type="number" class="form-control" name="highlight_start_t" min="0" onchange="updateControls()" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
                         <div class="col-4">
-                            <div class="row align-items-center">
+                            <div class="row">
                                 <div class="col-lg-6 text-lg-end">
                                     <label for="highlightEndTime" class="col-form-label">Animate end</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="highlightEndTime" type="number" class="form-control" name="highlight_end_t" min="0" oninput="updateControls()" autocomplete="off">
+                                    <input id="highlightEndTime" type="number" class="form-control" name="highlight_end_t" min="0" onchange="updateControls()" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
@@ -134,14 +134,14 @@
                         </div>                        
                     </div>
                     <div class="form-check my-2">
-                        <input id="copyright_waiver" type="checkbox" class="form-check-input" name="copyright_waiver" autocomplete="off" required>
+                        <input id="copyright_waiver" type="checkbox" class="form-check-input" name="copyright_waiver" required>
                         <label for="copyright_waiver" class="form-check-label">I dedicate this video to public domain, applying the 
                             <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.en">Creative Commons CC0 legal code</a> to it.
                         </label>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <input type="submit" class="btn btn-primary" value="Submit Video" formaction="/submit-video">
+                    <input type="button" class="btn btn-primary" value="Submit Video" formaction="/submit-video">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 </div>
             </form>

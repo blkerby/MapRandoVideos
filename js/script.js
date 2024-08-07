@@ -244,24 +244,32 @@ async function updateControls() {
     var centerX = parseInt(thumbnailX.value);
     var centerY = parseInt(thumbnailY.value);
 
-    thumbnailX.min = Math.floor(size / 2);
-    thumbnailX.max = 256 - Math.floor(size / 2);
-    thumbnailY.min = Math.floor(size / 2);
-    thumbnailY.max = 224 - Math.floor(size / 2);
-    if (centerX < thumbnailX.min) {
-        centerX = thumbnailX.min;
+    minThumbnailX = Math.floor(size / 2);
+    maxThumbnailX = 256 - Math.floor(size / 2);
+    minThumbnailY = Math.floor(size / 2);
+    maxThumbnailY = 224 - Math.floor(size / 2);
+    thumbnailX.min = minThumbnailX;
+    thumbnailX.max = maxThumbnailX;
+    thumbnailY.min = minThumbnailY;
+    thumbnailY.max = maxThumbnailY;
+    if (centerX < minThumbnailX) {
+        console.log(`min before: ${centerX}`);
+        centerX = minThumbnailX;
         thumbnailX.value = centerX;
+        console.log(`min after: ${centerX}`);
     }
-    if (centerX > thumbnailX.max) {
-        centerX = thumbnailX.max;
+    if (centerX > maxThumbnailX) {
+        console.log(`max before: ${centerX}, max=${thumbnailX.max}`);
+        centerX = maxThumbnailX;
         thumbnailX.value = centerX;
+        console.log(`max after: ${centerX}`);
     }
-    if (centerY < thumbnailY.min) {
-        centerY = thumbnailY.min;
+    if (centerY < minThumbnailY) {
+        centerY = minThumbnailY;
         thumbnailY.value = centerY;
     }
-    if (centerY > thumbnailY.max) {
-        centerY = thumbnailY.max;
+    if (centerY > maxThumbnailY) {
+        centerY = maxThumbnailY;
         thumbnailY.value = centerY;
     }
     updatePreview();
@@ -274,7 +282,7 @@ async function updateFile() {
     await loadAVIMetadata(file);
 
     var thumbnailTime = document.getElementById("thumbnailTime")
-    thumbnailTime.value = Math.floor(frameOffsets.length / 2);
+    thumbnailTime.value = 300;
     thumbnailTime.max = totalFrames - 1;
 
     var highlightStartTime = document.getElementById("highlightStartTime")
@@ -285,7 +293,7 @@ async function updateFile() {
     highlightEndTime.value = 420;
     highlightEndTime.max = totalFrames - 1;
 
-    updatePreview();
+    updateControls();
 }
 
 async function updateRoomOptions() {
