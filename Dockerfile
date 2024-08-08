@@ -1,4 +1,4 @@
-FROM rust:1.79.0-bullseye AS build
+FROM rust:1.80.0-bullseye AS build
 
 # Use a dummy binary to build the project dependencies (allowing the results to be cached)
 COPY rust/Cargo.lock /rust/Cargo.lock

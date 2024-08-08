@@ -1,10 +1,13 @@
 use std::{collections::HashMap, fs, path::Path, sync::Mutex};
 
-use log::info;
 use actix_web::{self, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder};
 use clap::Parser;
 use git2::Repository;
-use object_store::{gcp::GoogleCloudStorageBuilder, local::LocalFileSystem, memory::InMemory, Attribute, AttributeValue, Attributes, ObjectStore, PutOptions};
+use log::info;
+use object_store::{
+    gcp::GoogleCloudStorageBuilder, local::LocalFileSystem, memory::InMemory, Attribute,
+    AttributeValue, Attributes, ObjectStore, PutOptions,
+};
 use serde::Serialize;
 
 #[derive(Parser)]
@@ -16,13 +19,16 @@ struct Args {
     #[arg(long)]
     git_repo_local_path: String,
     #[arg(long)]
-    object_store_url: String,
+    object_store_bucket_url: String,
+    #[arg(long)]
+    object_store_prefix: String,
 }
 
 struct AppData {
     git_repository: Mutex<Repository>,
     git_branch: String,
     object_store: Box<dyn ObjectStore>,
+    object_store_prefix: String,
 }
 
 // Structure for the overview file `rooms.json`, loaded when opening the page `videos.maprando.com`,
@@ -47,8 +53,8 @@ struct RoomOverviewData {
 // Structure for individual room metadata files (loaded on-demand by the browser, after a room is selected):
 #[derive(Serialize, Clone)]
 struct RoomData {
-    nodes: Vec<NodeData>,    // (node ID, node name)
-    strats: Vec<StratData>,  // (from node ID, to node ID, strat name)
+    nodes: Vec<NodeData>,   // (node ID, node name)
+    strats: Vec<StratData>, // (from node ID, to node ID, strat name)
 }
 
 #[derive(Serialize, Clone)]
@@ -69,7 +75,9 @@ fn update_repo(repo: &Repository, branch: &str) {
     let mut origin_remote = repo.find_remote("origin").unwrap();
     info!("Fetching updates on branch {}", branch);
     origin_remote.fetch(&[branch], None, None).unwrap();
-    let oid = repo.refname_to_id(&format!("refs/remotes/origin/{}", branch)).unwrap();
+    let oid = repo
+        .refname_to_id(&format!("refs/remotes/origin/{}", branch))
+        .unwrap();
     let object = repo.find_object(oid, None).unwrap();
     repo.reset(&object, git2::ResetType::Hard, None).unwrap();
 }
@@ -92,7 +100,8 @@ pub fn create_object_store(url: &str) -> Box<dyn ObjectStore> {
         Box::new(
             GoogleCloudStorageBuilder::from_env()
                 .with_url(url)
-                .build().unwrap(),
+                .build()
+                .unwrap(),
         )
     } else if url == "mem" {
         Box::new(InMemory::new())
@@ -116,7 +125,7 @@ fn get_uncached_put_opts() -> PutOptions {
     put_options
 }
 
-async fn process_room(room_json: &serde_json::Value, object_store: &Box<dyn ObjectStore>) {
+async fn process_room(room_json: &serde_json::Value, app_data: web::Data<AppData>) {
     let room_id = room_json["id"].as_i64().unwrap();
 
     let mut node_listing: Vec<NodeData> = vec![];
@@ -125,7 +134,7 @@ async fn process_room(room_json: &serde_json::Value, object_store: &Box<dyn Obje
         let node_name = node_json["name"].as_str().unwrap().to_string();
         node_listing.push(NodeData {
             id: node_id,
-            name: node_name
+            name: node_name,
         });
     }
 
@@ -150,12 +159,19 @@ async fn process_room(room_json: &serde_json::Value, object_store: &Box<dyn Obje
 
     let room_data = RoomData {
         nodes: node_listing,
-        strats: strat_listing
+        strats: strat_listing,
     };
     let room_data_str = serde_json::to_string(&room_data).unwrap();
-    let object_path = object_store::path::Path::parse(format!("room/{}.json", room_id)).unwrap();
-    object_store.put_opts(&object_path, room_data_str.into(), get_uncached_put_opts()).await.unwrap();
-
+    let object_path = object_store::path::Path::parse(format!(
+        "{}room/{}.json",
+        app_data.object_store_prefix, room_id
+    ))
+    .unwrap();
+    app_data
+        .object_store
+        .put_opts(&object_path, room_data_str.into(), get_uncached_put_opts())
+        .await
+        .unwrap();
 }
 
 fn get_area_order() -> Vec<String> {
@@ -179,7 +195,10 @@ fn get_area_order() -> Vec<String> {
         "Yellow Inner Maridia",
         "Green Inner Maridia",
         "Tourian",
-    ].into_iter().map(|x| x.to_string()).collect()
+    ]
+    .into_iter()
+    .map(|x| x.to_string())
+    .collect()
 }
 
 fn get_area(room_json: &serde_json::Value) -> String {
@@ -196,9 +215,13 @@ fn get_area(room_json: &serde_json::Value) -> String {
     full_area
 }
 
-async fn update_rooms(git_repo: &Repository, object_store: &Box<dyn ObjectStore>) {
-    let region_pattern = git_repo.workdir().unwrap().to_str().unwrap().to_string() + "/region/**/*.json";
-    info!("Processing rooms at {}, updating {}", region_pattern, object_store);
+async fn update_rooms(git_repo: &Repository, app_data: web::Data<AppData>) {
+    let region_pattern =
+        git_repo.workdir().unwrap().to_str().unwrap().to_string() + "/region/**/*.json";
+    info!(
+        "Processing rooms at {}, updating {}/{}",
+        region_pattern, app_data.object_store, app_data.object_store_prefix
+    );
     let mut room_listing_by_area: HashMap<String, Vec<RoomOverviewData>> = HashMap::new();
     for entry in glob::glob(&region_pattern).unwrap() {
         if let Ok(path) = entry {
@@ -213,11 +236,14 @@ async fn update_rooms(git_repo: &Repository, object_store: &Box<dyn ObjectStore>
             let room_name = room_json["name"].as_str().unwrap().to_string();
 
             let area = get_area(&room_json);
-            room_listing_by_area.entry(area).or_default().push(RoomOverviewData { 
-                id: room_id,
-                name: room_name,
-            });
-            process_room(&room_json, object_store).await;
+            room_listing_by_area
+                .entry(area)
+                .or_default()
+                .push(RoomOverviewData {
+                    id: room_id,
+                    name: room_name,
+                });
+            process_room(&room_json, app_data.clone()).await;
         }
     }
 
@@ -232,15 +258,25 @@ async fn update_rooms(git_repo: &Repository, object_store: &Box<dyn ObjectStore>
         areas: area_data_vec,
     };
     let room_listing_str = serde_json::to_string(&overview_data).unwrap();
-    let object_path = object_store::path::Path::parse("rooms.json").unwrap();
-    object_store.put_opts(&object_path, room_listing_str.into(), get_uncached_put_opts()).await.unwrap();
+    let object_path =
+        object_store::path::Path::parse(format!("{}rooms.json", app_data.object_store_prefix))
+            .unwrap();
+    app_data
+        .object_store
+        .put_opts(
+            &object_path,
+            room_listing_str.into(),
+            get_uncached_put_opts(),
+        )
+        .await
+        .unwrap();
 }
 
 #[post("/update")]
 async fn update_data(app_data: web::Data<AppData>) -> impl Responder {
     let git_repo = app_data.git_repository.lock().unwrap();
     update_repo(&git_repo, &app_data.git_branch);
-    update_rooms(&git_repo, &app_data.object_store).await;
+    update_rooms(&git_repo, app_data.clone()).await;
     HttpResponse::Ok().body("")
 }
 
@@ -253,11 +289,16 @@ async fn main() {
     let args = Args::parse();
 
     let app_data = actix_web::web::Data::new(AppData {
-        git_repository: Mutex::new(create_repo(&args.git_repo_url, &args.git_repo_branch, &args.git_repo_local_path)),
+        git_repository: Mutex::new(create_repo(
+            &args.git_repo_url,
+            &args.git_repo_branch,
+            &args.git_repo_local_path,
+        )),
         git_branch: args.git_repo_branch,
-        object_store: create_object_store(&args.object_store_url),
+        object_store: create_object_store(&args.object_store_bucket_url),
+        object_store_prefix: args.object_store_prefix,
     });
-    update_rooms(&app_data.git_repository.lock().unwrap(), &app_data.object_store).await;
+    update_rooms(&app_data.git_repository.lock().unwrap(), app_data.clone()).await;
 
     HttpServer::new(move || {
         App::new()

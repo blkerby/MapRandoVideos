@@ -1,10 +1,10 @@
-const smMetadataUrl = "https://storage.googleapis.com/map-rando-videos/";
-var frameOffsets;
+// TODO: Split this up to make it more manageable.
+var frameOffsets = null;
 var animationEnabled = false;
 var animationFrameResolution = 3;
 var animationFrame = 0;
 var roomSummary;
-
+  
 function readSlice(file, start, size) {
     return new Promise(function(resolve, reject) {
         var reader = new FileReader();
@@ -159,6 +159,9 @@ function updateCanvas(canvas, rgbData, size, offsetX, offsetY) {
 }
 
 async function updateAnimation() {
+    if (frameOffsets == null) {
+        return;
+    }
     var size = parseInt(document.getElementById("thumbnailSize").value);
     var thumbnail = document.getElementById("thumbnail");
     var startFrame = parseInt(document.getElementById("highlightStartTime").value);
@@ -182,6 +185,9 @@ async function updateAnimation() {
 }
 
 async function updatePreview() {
+    if (frameOffsets == null) {
+        return;
+    }
     var size = parseInt(document.getElementById("thumbnailSize").value);
     var thumbnailX = document.getElementById("thumbnailX");
     var thumbnailY = document.getElementById("thumbnailY");
@@ -278,9 +284,17 @@ async function updateControls() {
 
 async function updateFile() {
     var videoFile = document.getElementById("videoFile");
+    if (videoFile.files.length == 0) {
+        return;
+    }
+
     // TODO: handle multiple files
     var file = videoFile.files[0];
     await loadAVIMetadata(file);
+
+    document.getElementById("thumbnailSize").value = 128;
+    document.getElementById("thumbnailX").value = 128;
+    document.getElementById("thumbnailY").value = 112;
 
     var thumbnailTime = document.getElementById("thumbnailTime")
     thumbnailTime.value = 300;
@@ -353,6 +367,9 @@ async function updateStratOptions() {
     let toNodeId = document.getElementById("toNode").value;
 
     stratSelect.options.length = 1;
+    if (roomSummary === null) {
+        return;
+    }
     for (const strat of roomSummary.strats) {
         if (strat.from_node_id == fromNodeId && strat.to_node_id == toNodeId) {
             var opt = document.createElement('option');
@@ -379,9 +396,96 @@ async function animateLoop() {
             updateAnimation();
         }
     }
-    console.log("animate");
 }
 
+function updateLogin() {
+    let username = localStorage.getItem("username");
+    let logoutButton = document.getElementById("logoutButton");
+    let loginButton = document.getElementById("loginButton");
+    let uploadButton = document.getElementById("uploadButton");
+    if (username !== null) {
+        logoutButton.innerText = `Log Out (${username})`;
+        logoutButton.classList.remove("d-none");
+        loginButton.classList.add("d-none");
+        uploadButton.classList.remove("d-none");
+    } else {
+        logoutButton.classList.add("d-none");
+        loginButton.classList.remove("d-none");
+        uploadButton.classList.add("d-none");
+    }
+}
+
+function signIn() {
+    let username = document.getElementById("username").value;
+    let token = document.getElementById("token").value;
+    
+    xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+        if (xhr.status == 200) {
+            localStorage.setItem("username", username);
+            localStorage.setItem("token", token);
+            updateLogin();
+            bootstrap.Modal.getInstance(document.getElementById("loginModal")).hide();
+        } else {
+            document.getElementById("loginFailed").classList.remove("d-none");
+        }
+    };
+    xhr.open("GET", "/sign-in", true, username, token);
+    xhr.send();
+}
+
+function signOut() {
+    localStorage.removeItem("username");
+    localStorage.removeItem("token");
+    updateLogin();
+}
+
+function tryParseInt(s) {
+    if (s == "") {
+        return null;
+    } else {
+        return parseInt(s);
+    }
+}
+
+async function submitVideo() {
+    var form = document.getElementById("uploadForm");
+    var formData = new FormData(form);
+    let req = {
+        room_id: tryParseInt(formData.get("room_id")),
+        from_node_id: tryParseInt(formData.get("from_node_id")),
+        to_node_id: tryParseInt(formData.get("to_node_id")),
+        strat_id: tryParseInt(formData.get("strat_id")),
+        note: formData.get("note"),
+        crop_size: tryParseInt(formData.get("crop_size")),
+        crop_center_x: tryParseInt(formData.get("crop_center_x")),
+        crop_center_y: tryParseInt(formData.get("crop_center_y")),
+        thumbnail_t: tryParseInt(formData.get("thumbnail_t")),
+        highlight_start_t: tryParseInt(formData.get("highlight_start_t")),
+        highlight_end_t: tryParseInt(formData.get("highlight_end_t")),
+        copyright_waiver: formData.get("copyright_waiver") == "on",
+    };
+    var json = JSON.stringify(req);
+    var result = await fetch("/submit-video", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: json
+    });
+    if (!result.ok) {
+        resultText = await result.text();
+        console.log(`Failed to submit video: ${resultText}`);
+    }
+}
+
+var loginModal = document.getElementById('loginModal')
+loginModal.addEventListener('show.bs.modal', function (event) {
+    document.getElementById("loginFailed").classList.add("d-none");
+});
+
+
+updateLogin();
 updateRoomOptions();
 updateFile();
 animateLoop();

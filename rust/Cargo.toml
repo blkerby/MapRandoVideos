@@ -8,10 +8,15 @@ actix-web = "4.8.0"
 actix-files = "0.6.2"
 askama = "0.12.1"
 env_logger = "0.11.5"
-clap = {version = "4.1.1", features=["derive"]}
+clap = {version = "4.1.1", features=["derive", "env"]}
 git2 = "0.19.0"
 object_store = {version = "0.10.2", features=["gcp"]}
 log = "0.4.17"
-serde_json = "1.0.122"
 glob = "0.3.1"
 serde = "1.0.204"
+serde_json = "1.0.122"
+strum = { version = "0.26", features = ["derive"] }
+tokio-postgres = "0.7.11"
+deadpool-postgres = "0.14.0"
+anyhow = {version = "1.0.68", features = ["backtrace"]}
+actix-web-httpauth = "0.8.2"

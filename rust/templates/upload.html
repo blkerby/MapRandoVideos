@@ -1,8 +1,6 @@
-<!-- Button trigger modal -->
-<button type="button" class="btn btn-primary mr-1 px-2 py-1" data-bs-toggle="modal" data-bs-target="#uploadModal">
+<button id="uploadButton" type="button" class="btn btn-primary mr-1 px-2 py-1 d-none" data-bs-toggle="modal" data-bs-target="#uploadModal">
     Upload Video
 </button>
-<!-- Modal -->
 <div class="modal" id="uploadModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -10,7 +8,7 @@
                 <h1 class="modal-title fs-5">Upload Video</h1>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form method="post" onsubmit="return false;">
+            <form id="uploadForm">
                 <div class="modal-body">
                     <div class="row mb-2">
                         <div class="col-lg-1 col-sm-2 text-sm-end">
@@ -25,7 +23,7 @@
                             <label for="room" class="col-form-label">Room</label>
                         </div>
                         <div class="col-lg-11 col-sm-10">
-                            <select id="room" class="form-select" name="room" onchange="updateNodeOptions()" autocomplete="off">
+                            <select id="room" class="form-select" name="room_id" onchange="updateNodeOptions()" autocomplete="off">
                                 <option value="">Select a room</option>
                             </select>    
                         </div>
@@ -75,7 +73,7 @@
                                     <label for="thumbnailSize" class="col-form-label">Crop size</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailSize" type="number" class="form-control" name="thumbnail_size" value="128" min="64" max="224" onchange="updateControls()" autocomplete="off">
+                                    <input id="thumbnailSize" type="number" class="form-control" name="crop_size" value="" min="64" max="224" onchange="updateControls()" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
@@ -85,7 +83,7 @@
                                     <label for="thumbnailX" class="col-form-label">Crop center X</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailX" type="number" class="form-control" name="thumbnail_x" value="128" min="32" max="224" onchange="updateControls()" autocomplete="off">
+                                    <input id="thumbnailX" type="number" class="form-control" name="crop_center_x" value="" onchange="updateControls()" autocomplete="off">
                                 </div>
                             </div>
                         </div>
@@ -95,7 +93,7 @@
                                     <label for="thumbnailY" class="col-form-label">Crop center Y</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailY" type="number" class="form-control" name="thumbnail_y" value="112" min="32" max="192" onchange="updateControls()" autocomplete="off">
+                                    <input id="thumbnailY" type="number" class="form-control" name="crop_center_y" value="" onchange="updateControls()" autocomplete="off">
                                 </div>
                             </div>
                         </div>
@@ -145,13 +143,13 @@
                     </div>
                     <div class="form-check my-2">
                         <input id="copyright_waiver" type="checkbox" class="form-check-input" name="copyright_waiver" required>
-                        <label for="copyright_waiver" class="form-check-label">I dedicate this video to public domain, applying the 
-                            <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.en">Creative Commons CC0 legal code</a> to it.
+                        <label for="copyright_waiver" class="form-check-label">I dedicate this video to public domain, applying 
+                            <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.en">Creative Commons CC0</a> to it.
                         </label>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <input type="button" class="btn btn-primary" value="Submit Video" formaction="/submit-video">
+                    <input type="button" class="btn btn-primary" value="Submit Video" onclick="submitVideo()">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 </div>
             </form>
