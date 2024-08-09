@@ -7,9 +7,14 @@ use actix_web_httpauth::extractors::basic::BasicAuth;
 use anyhow::{bail, Context, Result};
 use askama::Template;
 use clap::Parser;
+use futures_util::StreamExt as _;
 use log::{error, info};
+use object_store::{
+    gcp::GoogleCloudStorageBuilder, local::LocalFileSystem, memory::InMemory, ObjectStore,
+};
 use serde::Deserialize;
-use std::str::FromStr;
+use std::{path::Path, str::FromStr};
+use tokio::io::AsyncWriteExt as _;
 
 #[derive(strum::EnumString)]
 enum Permission {
@@ -30,7 +35,9 @@ struct Args {
     #[arg(long, env)]
     sm_json_data_summary_url: String,
     #[arg(long, env)]
-    video_storage_url: String,
+    video_storage_bucket_url: String,
+    #[arg(long, env)]
+    video_storage_prefix: String,
 }
 
 #[derive(Template)]
@@ -42,6 +49,26 @@ struct HomeTemplate {
 struct AppData {
     args: Args,
     db: deadpool_postgres::Pool,
+    video_store: Box<dyn ObjectStore>,
+}
+
+pub fn create_object_store(url: &str) -> Box<dyn ObjectStore> {
+    let object_store: Box<dyn ObjectStore> = if url.starts_with("gs:") {
+        Box::new(
+            GoogleCloudStorageBuilder::from_env()
+                .with_url(url)
+                .build()
+                .unwrap(),
+        )
+    } else if url == "mem" {
+        Box::new(InMemory::new())
+    } else if url.starts_with("file:") {
+        let root = &url[5..];
+        Box::new(LocalFileSystem::new_with_prefix(Path::new(root)).unwrap())
+    } else {
+        panic!("Unsupported seed repository type: {}", url);
+    };
+    object_store
 }
 
 async fn build_app_data() -> AppData {
@@ -63,7 +90,11 @@ async fn build_app_data() -> AppData {
     let _ = pool.get().await.unwrap();
 
     // actix_web::rt::spawn
-    AppData { args, db: pool }
+    AppData {
+        video_store: create_object_store(&args.video_storage_bucket_url),
+        db: pool,
+        args,
+    }
 }
 
 #[get("/")]
@@ -93,7 +124,6 @@ async fn authenticate(app_data: web::Data<AppData>, auth: &BasicAuth) -> Result<
             let id: i32 = row.get("id");
             let token: String = row.get("token");
             let permission_str: String = row.get("permission");
-            info!("token: {}, permission: {}", token, permission_str);
             if token == auth.password().unwrap_or("") {
                 let permission =
                     Permission::from_str(&permission_str).context("parsing permission")?;
@@ -114,6 +144,85 @@ async fn sign_in(app_data: web::Data<AppData>, auth: BasicAuth) -> impl Responde
             HttpResponse::Unauthorized().body("")
         }
     }
+}
+
+async fn try_upload_video(
+    mut gzip_payload: web::Payload,
+    app_data: web::Data<AppData>,
+    account_info: &AccountInfo,
+) -> Result<()> {
+    let sql = "SELECT nextval('video_id_seq')";
+    let db_client = app_data.db.get().await.unwrap();
+    let stmt = db_client.prepare_cached(sql).await?;
+    let result = db_client.query_one(&stmt, &[]).await?;
+    let id: i64 = result.get(0);
+
+    let mut compressed_data: Vec<u8> = vec![];
+    let xz_enc = async_compression::tokio::write::XzEncoder::with_quality(
+        &mut compressed_data,
+        async_compression::Level::Precise(9),
+    );
+    let mut gz_dec = async_compression::tokio::write::GzipDecoder::new(xz_enc);
+
+    info!(
+        "Compressing video id={} from user_id={}",
+        id, account_info.id,
+    );
+
+    while let Some(item) = gzip_payload.next().await {
+        gz_dec.write(&item?).await?;
+    }
+
+    let object_path = object_store::path::Path::parse(format!(
+        "{}avi-xz/{}.avi.xz",
+        app_data.args.video_storage_prefix, id
+    ))?;
+    let compressed_len = compressed_data.len();
+    info!(
+        "Storing compressed video at {}/{} ({} bytes)",
+        app_data.args.video_storage_bucket_url, object_path, compressed_len
+    );
+    app_data
+        .video_store
+        .put(&object_path, compressed_data.into())
+        .await?;
+    info!(
+        "Done storing video {}/{} ({} bytes)",
+        app_data.args.video_storage_bucket_url, object_path, compressed_len
+    );
+    // let _ = xz_enc.into_inner();
+    // payload.
+    // let data = payload
+    //     .to_bytes()
+    //     .await
+    //     .map_err(|e| anyhow::Error::msg(e.to_string()))?;
+    Ok(())
+}
+
+#[post("/upload-video")]
+async fn upload_video(
+    payload: web::Payload,
+    app_data: web::Data<AppData>,
+    auth: BasicAuth,
+) -> impl Responder {
+    let account_info = match authenticate(app_data.clone(), &auth).await {
+        Ok(ai) => ai,
+        Err(e) => {
+            error!("Failed authentication: {}", e);
+            return HttpResponse::Unauthorized().body("Unauthorized");
+        }
+    };
+
+    match try_upload_video(payload, app_data, &account_info).await {
+        Ok(_) => {}
+        Err(e) => {
+            error!("Failed to upload video: {}", e);
+            return HttpResponse::InternalServerError().body("Failed to upload video");
+        }
+    }
+
+    // TODO: return video ID
+    HttpResponse::Ok().body("")
 }
 
 #[derive(Deserialize, Debug)]
@@ -195,7 +304,7 @@ async fn submit_video(
     let account_info = match authenticate(app_data.clone(), &auth).await {
         Ok(ai) => ai,
         Err(e) => {
-            error!("Failed sign-in: {}", e);
+            error!("Failed authentication: {}", e);
             return HttpResponse::Unauthorized().body("Unauthorized");
         }
     };
@@ -226,6 +335,7 @@ async fn main() {
             .wrap(Logger::default())
             .service(home)
             .service(sign_in)
+            .service(upload_video)
             .service(submit_video)
             .service(actix_files::Files::new("/js", "../js"))
     })

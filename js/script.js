@@ -282,6 +282,21 @@ async function updateControls() {
     updatePreview();
 }
 
+async function readFileChunks(file, chunkSize) {
+    var pos = 0;
+    var chunks = [];
+    while (true) {
+        const slice = file.slice(pos, pos + chunkSize);
+        const arrayBuf = await slice.arrayBuffer(slice);
+        const data = new Uint8Array(arrayBuf);
+        if (data.length == 0) {
+            return chunks;
+        }
+        chunks.push(data);
+        pos += chunkSize;
+    }
+}
+
 async function updateFile() {
     var videoFile = document.getElementById("videoFile");
     if (videoFile.files.length == 0) {
@@ -290,6 +305,7 @@ async function updateFile() {
 
     // TODO: handle multiple files
     var file = videoFile.files[0];
+
     await loadAVIMetadata(file);
 
     document.getElementById("thumbnailSize").value = 128;
@@ -309,6 +325,24 @@ async function updateFile() {
     highlightEndTime.max = totalFrames - 1;
 
     updateControls();
+
+    var start = performance.now();
+    var compressedStream = file.stream().pipeThrough(new CompressionStream("gzip"));
+    var compressedData = new Uint8Array(await new Response(compressedStream).arrayBuffer());
+    var elapsedTime = performance.now() - start;
+    console.log(`compression time elapsed (ms): ${elapsedTime}, compressed size: ${compressedData.length}`);
+
+    var start = performance.now();
+    await fetch("/upload-video", {
+        method: "POST",
+        headers: {
+            "Content-Type": "video/avi",
+            "Content-Encoding": "gzip"
+        },
+        body: compressedData,
+    });
+    var elapsedTime = performance.now() - start;
+    console.log(`upload time elapsed (ms): ${elapsedTime}`);
 }
 
 async function updateRoomOptions() {
