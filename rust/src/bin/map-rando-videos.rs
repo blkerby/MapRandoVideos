@@ -38,6 +38,8 @@ struct Args {
     video_storage_bucket_url: String,
     #[arg(long, env)]
     video_storage_prefix: String,
+    #[arg(long, env)]
+    xz_compression_level: i32,
 }
 
 #[derive(Template)]
@@ -150,17 +152,17 @@ async fn try_upload_video(
     mut gzip_payload: web::Payload,
     app_data: web::Data<AppData>,
     account_info: &AccountInfo,
-) -> Result<()> {
+) -> Result<i32> {
     let sql = "SELECT nextval('video_id_seq')";
     let db_client = app_data.db.get().await.unwrap();
     let stmt = db_client.prepare_cached(sql).await?;
     let result = db_client.query_one(&stmt, &[]).await?;
-    let id: i64 = result.get(0);
+    let id = result.get::<_, i64>(0) as i32;
 
     let mut compressed_data: Vec<u8> = vec![];
     let xz_enc = async_compression::tokio::write::XzEncoder::with_quality(
         &mut compressed_data,
-        async_compression::Level::Precise(9),
+        async_compression::Level::Precise(app_data.args.xz_compression_level),
     );
     let mut gz_dec = async_compression::tokio::write::GzipDecoder::new(xz_enc);
 
@@ -190,13 +192,13 @@ async fn try_upload_video(
         "Done storing video {}/{} ({} bytes)",
         app_data.args.video_storage_bucket_url, object_path, compressed_len
     );
-    // let _ = xz_enc.into_inner();
-    // payload.
-    // let data = payload
-    //     .to_bytes()
-    //     .await
-    //     .map_err(|e| anyhow::Error::msg(e.to_string()))?;
-    Ok(())
+
+    let sql = "INSERT INTO video (id, status, created_account_id) VALUES ($1, 'Pending', $2)";
+    let stmt = db_client.prepare_cached(sql).await?;
+    db_client.execute(&stmt, &[&id, &account_info.id]).await?;
+    info!("Inserted video into database (id={})", id);
+
+    Ok(id)
 }
 
 #[post("/upload-video")]
@@ -213,16 +215,16 @@ async fn upload_video(
         }
     };
 
-    match try_upload_video(payload, app_data, &account_info).await {
-        Ok(_) => {}
+    let id = match try_upload_video(payload, app_data, &account_info).await {
+        Ok(id) => id,
         Err(e) => {
             error!("Failed to upload video: {}", e);
             return HttpResponse::InternalServerError().body("Failed to upload video");
         }
-    }
+    };
 
     // TODO: return video ID
-    HttpResponse::Ok().body("")
+    HttpResponse::Ok().body(id.to_string())
 }
 
 #[derive(Deserialize, Debug)]

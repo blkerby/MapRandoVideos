@@ -4,7 +4,10 @@ var animationEnabled = false;
 var animationFrameResolution = 3;
 var animationFrame = 0;
 var roomSummary;
-  
+var videoId = null;
+var doneUploading = false;
+var submitting = false;
+
 function readSlice(file, start, size) {
     return new Promise(function(resolve, reject) {
         var reader = new FileReader();
@@ -298,6 +301,8 @@ async function readFileChunks(file, chunkSize) {
 }
 
 async function updateFile() {
+    videoId = null;
+    doneUploading = false;  
     var videoFile = document.getElementById("videoFile");
     if (videoFile.files.length == 0) {
         return;
@@ -333,7 +338,7 @@ async function updateFile() {
     console.log(`compression time elapsed (ms): ${elapsedTime}, compressed size: ${compressedData.length}`);
 
     var start = performance.now();
-    await fetch("/upload-video", {
+    var uploadResponse = await fetch("/upload-video", {
         method: "POST",
         headers: {
             "Content-Type": "video/avi",
@@ -343,6 +348,13 @@ async function updateFile() {
     });
     var elapsedTime = performance.now() - start;
     console.log(`upload time elapsed (ms): ${elapsedTime}`);
+
+    if (!uploadResponse.ok) {
+        throw new Error(`Error uploading video: ${uploadResponse.status}`);
+    }
+    videoId = parseInt(await uploadResponse.text());
+    doneUploading = true;
+    console.log("finished uploading video: id=" + videoId);
 }
 
 async function updateRoomOptions() {
@@ -483,6 +495,18 @@ function tryParseInt(s) {
 }
 
 async function submitVideo() {
+    if (submitting) {
+        return;
+    }
+    submitting = true;
+    let submitModal = new bootstrap.Modal(document.getElementById("submitModal"));
+    let uploadModal = bootstrap.Modal.getInstance(document.getElementById("uploadModal"));
+    submitModal.show();
+    uploadModal.hide();
+    while (!doneUploading) {
+        // Sleep for 200 ms
+        await new Promise(r => setTimeout(r, 200));
+    }
     var form = document.getElementById("uploadForm");
     var formData = new FormData(form);
     let req = {
@@ -507,9 +531,11 @@ async function submitVideo() {
         },
         body: json
     });
+    submitModal.hide();
     if (!result.ok) {
         resultText = await result.text();
         console.log(`Failed to submit video: ${resultText}`);
+        uploadModal.show();
     }
 }
 
