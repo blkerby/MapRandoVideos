@@ -229,6 +229,7 @@ async fn upload_video(
 
 #[derive(Deserialize, Debug)]
 struct SubmitVideoRequest {
+    video_id: i32,
     room_id: Option<i32>,
     from_node_id: Option<i32>,
     to_node_id: Option<i32>,
@@ -256,22 +257,21 @@ async fn try_submit_video(
     }
     let db_client = app_data.db.get().await.unwrap();
     let sql = r#"
-        INSERT INTO video (
-            status,
-            created_account_id,
-            room_id,
-            from_node_id,
-            to_node_id,
-            strat_id,
-            note,
-            crop_size,
-            crop_center_x,
-            crop_center_y,
-            thumbnail_t,
-            highlight_start_t,
-            highlight_end_t
-        ) 
-        VALUES ('Pending', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        UPDATE video
+        SET status = 'New',
+            submitted_ts=current_timestamp,
+            room_id=$2,
+            from_node_id=$3,
+            to_node_id=$4,
+            strat_id=$5,
+            note=$6,
+            crop_size=$7,
+            crop_center_x=$8,
+            crop_center_y=$9,
+            thumbnail_t=$10,
+            highlight_start_t=$11,
+            highlight_end_t=$12
+        WHERE id=$13 AND created_account_id=$1
     "#;
     let stmt = db_client.prepare_cached(sql).await?;
     let _ = db_client
@@ -290,10 +290,11 @@ async fn try_submit_video(
                 &req.thumbnail_t,
                 &req.highlight_start_t,
                 &req.highlight_end_t,
+                &req.video_id,
             ],
         )
         .await?;
-    info!("Inserted video");
+    info!("Submitted video");
     Ok(())
 }
 

@@ -313,6 +313,10 @@ async function updateFile() {
 
     await loadAVIMetadata(file);
 
+    document.getElementById("thumbnail").classList.remove("d-none");
+    document.getElementById("highlightStart").classList.remove("d-none");
+    document.getElementById("highlightEnd").classList.remove("d-none");
+
     document.getElementById("thumbnailSize").value = 128;
     document.getElementById("thumbnailX").value = 128;
     document.getElementById("thumbnailY").value = 112;
@@ -337,12 +341,16 @@ async function updateFile() {
     var elapsedTime = performance.now() - start;
     console.log(`compression time elapsed (ms): ${elapsedTime}, compressed size: ${compressedData.length}`);
 
+    let username = localStorage.getItem("username");
+    let token = localStorage.getItem("token");
+
     var start = performance.now();
     var uploadResponse = await fetch("/upload-video", {
         method: "POST",
         headers: {
             "Content-Type": "video/avi",
-            "Content-Encoding": "gzip"
+            "Content-Encoding": "gzip",
+            "Authorization": 'Basic ' + btoa(username + ":" + token),
         },
         body: compressedData,
     });
@@ -498,6 +506,12 @@ async function submitVideo() {
     if (submitting) {
         return;
     }
+    var form = document.getElementById("uploadForm");
+    if (!form.checkValidity()) {
+        console.log("invalid form");
+        form.classList.add('was-validated');
+        return;
+    }
     submitting = true;
     let submitModal = new bootstrap.Modal(document.getElementById("submitModal"));
     let uploadModal = bootstrap.Modal.getInstance(document.getElementById("uploadModal"));
@@ -507,9 +521,9 @@ async function submitVideo() {
         // Sleep for 200 ms
         await new Promise(r => setTimeout(r, 200));
     }
-    var form = document.getElementById("uploadForm");
     var formData = new FormData(form);
     let req = {
+        video_id: videoId,
         room_id: tryParseInt(formData.get("room_id")),
         from_node_id: tryParseInt(formData.get("from_node_id")),
         to_node_id: tryParseInt(formData.get("to_node_id")),
@@ -524,15 +538,29 @@ async function submitVideo() {
         copyright_waiver: formData.get("copyright_waiver") == "on",
     };
     var json = JSON.stringify(req);
+
+    let username = localStorage.getItem("username");
+    let token = localStorage.getItem("token");
+
     var result = await fetch("/submit-video", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            "Authorization": 'Basic ' + btoa(username + ":" + token),
         },
         body: json
     });
+    submitting = false;
     submitModal.hide();
-    if (!result.ok) {
+    if (result.ok) {
+        console.log("Successfully submitted video");
+        form.classList.remove("was-validated");
+        frameOffsets = null;
+        document.getElementById("videoFile").value = null;
+        document.getElementById("thumbnail").classList.add("d-none");
+        document.getElementById("highlightStart").classList.add("d-none");
+        document.getElementById("highlightEnd").classList.add("d-none");
+    } else {
         resultText = await result.text();
         console.log(`Failed to submit video: ${resultText}`);
         uploadModal.show();

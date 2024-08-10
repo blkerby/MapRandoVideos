@@ -8,14 +8,14 @@
                 <h1 class="modal-title fs-5">Upload Video</h1>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="uploadForm">
+            <form id="uploadForm" class="needs-validation">
                 <div class="modal-body">
                     <div class="row mb-2">
                         <div class="col-lg-1 col-sm-2 text-sm-end">
                             <label for="videoFile" class="col-form-label">Video</label>
                         </div>
                         <div class="col-lg-11 col-sm-10">
-                            <input id="videoFile" type="file" class="form-control" name="video_file" accept=".avi" onchange="updateFile()" autocomplete="off">
+                            <input id="videoFile" type="file" class="form-control" name="video_file" accept=".avi" onchange="updateFile()" autocomplete="off" required>
                         </div>
                     </div>
                     <div class="row my-2">
@@ -132,20 +132,23 @@
                     </div>
                     <div class="row my-2" onmouseenter="enableAnimation()" onmouseleave="disableAnimation()">
                         <div class="col-4 d-flex align-items-center justify-content-center">
-                            <canvas id="thumbnail" width="224" height="224" style="height:128px"></canvas>
+                            <canvas id="thumbnail" class="d-none" width="224" height="224" style="height:128px"></canvas>
                         </div>                        
                         <div class="col-4 d-flex align-items-center justify-content-center">
-                            <canvas id="highlightStart" width="224" height="224" style="height:128px"></canvas>
+                            <canvas id="highlightStart" class="d-none" width="224" height="224" style="height:128px"></canvas>
                         </div>                        
                         <div class="col-4 d-flex align-items-center justify-content-center">
-                            <canvas id="highlightEnd" width="224" height="224" style="height:128px"></canvas>
+                            <canvas id="highlightEnd" class="d-none" width="224" height="224" style="height:128px"></canvas>
                         </div>                        
                     </div>
                     <div class="form-check my-2">
-                        <input id="copyright_waiver" type="checkbox" class="form-check-input" name="copyright_waiver" required>
+                        <input id="copyright_waiver" type="checkbox" class="form-check-input" name="copyright_waiver" required autocomplete="map-rando-video-copyright-waiver">
                         <label for="copyright_waiver" class="form-check-label">I dedicate this video to public domain, applying 
                             <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.en">Creative Commons CC0</a> to it.
                         </label>
+                        <div class="invalid-feedback">
+                            This is required in order to submit the video.
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -156,7 +159,7 @@
         </div>
     </div>
 </div>
-<div class="modal fade" id="submitModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+<div class="modal" id="submitModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">

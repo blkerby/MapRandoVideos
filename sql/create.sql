@@ -14,6 +14,7 @@ CREATE TABLE video (
     frame_count integer,
     created_ts timestamp default current_timestamp,
     created_account_id integer,
+    submitted_ts timestamp,
     updated_ts timestamp,
     updated_account_id integer,
     room_id integer,
