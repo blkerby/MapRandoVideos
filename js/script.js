@@ -5,6 +5,7 @@ var animationFrameResolution = 3;
 var animationFrame = 0;
 var roomSummary;
 var videoId = null;
+var uploading = false;
 var doneUploading = false;
 var submitting = false;
 
@@ -588,15 +589,40 @@ async function updateUserList() {
         opt.innerText = userInfo.username;
         userSelect.appendChild(opt);
     }
-    console.log("users: " + JSON.stringify(userList));
 }
 
-function updateFilter() {
+async function updateFilter() {
     let room = document.getElementById("filterRoom").value;
     let fromNode = document.getElementById("filterFromNode").value;
     let toNode = document.getElementById("filterToNode").value;
     let strat = document.getElementById("filterStrat").value;
-    let account = document.getElementById("filterUser").value;
+    let user = document.getElementById("filterUser").value;
+
+    let req = {};
+    if (room != "") {
+        req.room_id = parseInt(room);
+    }
+    if (fromNode != "") {
+        req.from_node_id = parseInt(fromNode);
+    }
+    if (toNode != "") {
+        req.to_node_id = parseInt(toNode);
+    }
+    if (strat != "") {
+        req.strat_id = parseInt(strat);
+    }
+    if (user != "") {
+        req.user_id = parseInt(user);
+    }
+    req.sort_by = "CreatedTimestamp";
+    req.limit = 10;
+
+    let params = new URLSearchParams(req).toString();
+    let result = await fetch(`/list-videos?${params}`);
+    if (!result.ok) {
+        throw new Error(`HTTP ${result.status} fetching video list: ${await result.text()}`);
+    }
+    console.log("video list: " + JSON.stringify(await result.json()));
 }
 
 updateLogin();

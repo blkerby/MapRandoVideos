@@ -551,8 +551,10 @@ checksum = "a21f936df1771bf62b77f047b726c4625ff2e8aa607c01ec06e5a05bd8463401"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-targets 0.52.6",
 ]
 
@@ -1357,6 +1359,7 @@ dependencies = [
  "anyhow",
  "askama",
  "async-compression",
+ "chrono",
  "clap",
  "deadpool-postgres",
  "env_logger",
@@ -1657,6 +1660,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02048d9e032fb3cc3413bbf7b83a15d84a5d419778e2628751896d856498eee9"
 dependencies = [
  "bytes",
+ "chrono",
  "fallible-iterator",
  "postgres-protocol",
 ]

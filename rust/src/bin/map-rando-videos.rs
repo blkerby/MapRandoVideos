@@ -16,6 +16,7 @@ use object_store::{
 use serde::{Deserialize, Serialize};
 use std::{path::Path, str::FromStr};
 use tokio::io::AsyncWriteExt as _;
+use tokio_postgres::types::ToSql;
 
 #[derive(strum::EnumString)]
 enum Permission {
@@ -194,7 +195,10 @@ async fn try_upload_video(
         app_data.args.video_storage_bucket_url, object_path, compressed_len
     );
 
-    let sql = "INSERT INTO video (id, status, created_account_id) VALUES ($1, 'Pending', $2)";
+    let sql = r#"
+        INSERT INTO video (id, status, created_account_id, updated_account_id)
+        VALUES ($1, 'Pending', $2, $2)
+    "#;
     let stmt = db_client.prepare_cached(sql).await?;
     db_client.execute(&stmt, &[&id, &account_info.id]).await?;
     info!("Inserted video into database (id={})", id);
@@ -260,6 +264,7 @@ async fn try_submit_video(
     let sql = r#"
         UPDATE video
         SET status = 'New',
+            updated_ts=current_timestamp,
             submitted_ts=current_timestamp,
             room_id=$2,
             from_node_id=$3,
@@ -353,6 +358,149 @@ async fn list_users(app_data: web::Data<AppData>) -> actix_web::Result<impl Resp
     Ok(web::Json(v))
 }
 
+#[derive(Serialize, Deserialize, strum::EnumString)]
+enum ListVideosSortBy {
+    CreatedTimestamp,
+    UpdatedTimestamp,
+}
+
+#[derive(Deserialize)]
+struct ListVideosRequest {
+    room_id: Option<i32>,
+    from_node_id: Option<i32>,
+    to_node_id: Option<i32>,
+    strat_id: Option<i32>,
+    user_id: Option<i32>,
+    sort_by: ListVideosSortBy,
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+#[derive(Serialize, Deserialize, strum::EnumString)]
+enum VideoStatus {
+    Pending,
+    New,
+    Approved,
+    Supplemental,
+    Incomplete,
+    Obsolete
+}
+
+#[derive(Serialize)]
+struct VideoListing {
+    id: i32,
+    created_user_id: i32,
+    created_ts: i64,
+    updated_user_id: i32,
+    updated_ts: i64,
+    room_id: Option<i32>,
+    from_node_id: Option<i32>,
+    to_node_id: Option<i32>,
+    strat_id: Option<i32>,
+    note: String,
+    status: VideoStatus,
+}
+
+async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<Vec<VideoListing>> {
+    let mut sql_parts = vec![];
+    sql_parts.push(format!(
+        r#"
+        SELECT 
+            id,
+            created_account_id,
+            created_ts,
+            updated_account_id,
+            updated_ts,
+            room_id,
+            from_node_id,
+            to_node_id,
+            strat_id,
+            note,
+            status
+        FROM video
+        "#
+    ));
+
+    let mut sql_filters = vec![];
+    let mut param_values: Vec<&(dyn ToSql + Sync)> = vec![];
+    if req.room_id.is_some() {
+        sql_filters.push(format!("room_id = ${}", param_values.len() + 1));
+        param_values.push(req.room_id.as_ref().unwrap());
+    }
+    if req.from_node_id.is_some() {
+        sql_filters.push(format!("from_node_id = ${}", param_values.len() + 1));
+        param_values.push(req.from_node_id.as_ref().unwrap());
+    }
+    if req.to_node_id.is_some() {
+        sql_filters.push(format!("to_node_id = ${}", param_values.len() + 1));
+        param_values.push(req.to_node_id.as_ref().unwrap());
+    }
+    if req.strat_id.is_some() {
+        sql_filters.push(format!("strat_id = ${}", param_values.len() + 1));
+        param_values.push(req.strat_id.as_ref().unwrap());
+    }
+    if req.user_id.is_some() {
+        sql_filters.push(format!("(created_account_id = ${} OR updated_account_id = ${})", param_values.len() + 1, param_values.len() + 1));
+        param_values.push(req.user_id.as_ref().unwrap());
+    }
+    if sql_filters.len() > 0 {
+        sql_parts.push(format!("WHERE {}\n", sql_filters.join(" AND ")));
+    }
+
+    match req.sort_by {
+        ListVideosSortBy::CreatedTimestamp => {
+            sql_parts.push("ORDER BY created_ts DESC\n".to_string());
+        }
+        ListVideosSortBy::UpdatedTimestamp => {
+            sql_parts.push("ORDER BY updated_ts DESC\n".to_string());
+        }
+    }
+
+    if req.limit.is_some() {
+        sql_parts.push(format!("LIMIT ${}\n", param_values.len() + 1));
+        param_values.push(req.limit.as_ref().unwrap());
+    }
+    if req.offset.is_some() {
+        sql_parts.push(format!("OFFSET ${}\n", param_values.len() + 1));
+        param_values.push(req.offset.as_ref().unwrap());
+    }
+
+    let sql = sql_parts.join("");
+    let db_client = app_data.db.get().await?;
+
+    let stmt = db_client.prepare_cached(&sql).await?;
+    let result = db_client.query(&stmt, param_values.as_slice()).await?;
+    let mut out: Vec<VideoListing> = vec![];
+    for row in result {
+        let created_ts: chrono::DateTime<chrono::offset::Utc> = row.get("created_ts");
+        let updated_ts: chrono::DateTime<chrono::offset::Utc> = row.get("updated_ts");
+        let status_str: String = row.get("status");
+        out.push(VideoListing {
+            id: row.get("id"),
+            created_user_id: row.get("created_account_id"),
+            created_ts: created_ts.timestamp_millis(),
+            updated_user_id: row.get("updated_account_id"),
+            updated_ts: updated_ts.timestamp_millis(),
+            room_id: row.get("room_id"),
+            from_node_id: row.get("from_node_id"),
+            to_node_id: row.get("to_node_id"),
+            strat_id: row.get("strat_id"),
+            note: row.get("note"),
+            status: VideoStatus::try_from(status_str.as_str())?,
+        });
+    }
+
+    Ok(out)
+}
+
+#[get("/list-videos")]
+async fn list_videos(req: web::Query<ListVideosRequest>, app_data: web::Data<AppData>) -> actix_web::Result<impl Responder> {
+    let out = try_list_videos(&req, &app_data)
+        .await
+        .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
+    Ok(web::Json(out))
+}
+
 #[actix_web::main]
 async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -371,6 +519,7 @@ async fn main() {
             .service(upload_video)
             .service(submit_video)
             .service(list_users)
+            .service(list_videos)
             .service(actix_files::Files::new("/js", "../js"))
             .service(actix_files::Files::new("/static", "static"))
     })
