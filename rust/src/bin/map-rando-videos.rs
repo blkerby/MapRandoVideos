@@ -1,5 +1,6 @@
 use actix_web::{
     self, get,
+    http::StatusCode,
     middleware::{Compress, Logger},
     post, web, App, HttpResponse, HttpServer, Responder,
 };
@@ -12,7 +13,7 @@ use log::{error, info};
 use object_store::{
     gcp::GoogleCloudStorageBuilder, local::LocalFileSystem, memory::InMemory, ObjectStore,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{path::Path, str::FromStr};
 use tokio::io::AsyncWriteExt as _;
 
@@ -323,6 +324,35 @@ async fn submit_video(
     HttpResponse::Ok().body("")
 }
 
+#[derive(Serialize)]
+struct UserListing {
+    id: i32,
+    username: String,
+}
+
+async fn try_list_users(app_data: web::Data<AppData>) -> Result<Vec<UserListing>> {
+    let db_client = app_data.db.get().await.unwrap();
+    let sql = "SELECT id, username FROM account";
+    let stmt = db_client.prepare_cached(sql).await?;
+    let result = db_client.query(&stmt, &[]).await?;
+    let mut out = vec![];
+    for row in result {
+        out.push(UserListing {
+            id: row.get(0),
+            username: row.get(1),
+        })
+    }
+    Ok(out)
+}
+
+#[get("/list-users")]
+async fn list_users(app_data: web::Data<AppData>) -> actix_web::Result<impl Responder> {
+    let v = try_list_users(app_data)
+        .await
+        .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
+    Ok(web::Json(v))
+}
+
 #[actix_web::main]
 async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -340,7 +370,9 @@ async fn main() {
             .service(sign_in)
             .service(upload_video)
             .service(submit_video)
+            .service(list_users)
             .service(actix_files::Files::new("/js", "../js"))
+            .service(actix_files::Files::new("/static", "static"))
     })
     .bind("0.0.0.0:8081")
     .unwrap()

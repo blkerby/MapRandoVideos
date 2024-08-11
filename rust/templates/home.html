@@ -13,7 +13,35 @@
     </script>
 </head>
 <body>
+    <nav class="navbar navbar-expand-md bg-body-secondary sticky-top">
+        <div class="container-fluid col-xl-9 col-xxl-7">
+          <a class="navbar-brand" href="https://maprando.com">
+            <img src="/static/map_station_transparent.png" style="image-rendering: pixelated;">
+          </a>
+          <h2 class="fw-bold">Map Rando Videos</h2>
+          <ul class="navbar-nav">
+            <button id="uploadButton" type="button" class="nav-item btn btn-primary mx-2 my-1 px-2 py-1 d-none" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                Upload Video
+            </button>
+            <button id="loginButton" type="button" class="nav-item btn btn-primary mr-1 my-1 px-2 py-1" data-bs-toggle="modal" data-bs-target="#loginModal">
+                Log In
+            </button>
+            <button id="logoutButton" type="button" class="nav-item btn btn-secondary mr-1 my-1 px-2 py-1 d-none" onclick="signOut()"></button>              
+          </ul>
+        </div>
+    </nav>      
     {% include "upload.html" %}
-    {% include "login.html" %}
+    {% include "login.html" %}  
+    <div class="container col-xl-9 col-xxl-7">
+        {% include "intro.html" %}
+        <div class="row">
+            <div class="col text-center my-2">
+                <button id="uploadButton" type="button" class="btn btn-primary px-2 py-1 d-none" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                    Upload Video
+                </button>
+            </div>
+        </div>
+        {% include "video_listing.html" %}
+    </div>
     <script src="/js/script.js"></script>
 </body>

@@ -365,31 +365,32 @@ async function updateFile() {
     console.log("finished uploading video: id=" + videoId);
 }
 
-async function updateRoomOptions() {
+async function updateRoomOptions(roomSelectList) {
     let overviewResponse = await fetch(smMetadataUrl + "rooms.json");
     if (!overviewResponse.ok) {
         throw new Error(`Error fetching rooms.json: ${overviewResponse.status}`);
     }
     let overview = await overviewResponse.json();
-    let roomSelect = document.getElementById("room");
-    for (const areaData of overview.areas) {
-        let optGroup = document.createElement('optgroup');
-        optGroup.label = areaData.name;
-        for (const roomData of areaData.rooms) {
-            var opt = document.createElement('option');
-            opt.value = roomData.id;
-            opt.innerText = roomData.name;
-            optGroup.appendChild(opt);    
-        }
-        roomSelect.appendChild(optGroup);
+    for (roomSelect of roomSelectList) {
+        for (const areaData of overview.areas) {
+            let optGroup = document.createElement('optgroup');
+            optGroup.label = areaData.name;
+            for (const roomData of areaData.rooms) {
+                var opt = document.createElement('option');
+                opt.value = roomData.id;
+                opt.innerText = roomData.name;
+                optGroup.appendChild(opt);    
+            }
+            roomSelect.appendChild(optGroup);
+        }    
     }
 }
 
-async function updateNodeOptions() {
-    let roomId = document.getElementById("room").value;
-    let fromNode = document.getElementById("fromNode");
-    let toNode = document.getElementById("toNode");
-    let strat = document.getElementById("strat");
+async function updateNodeOptions(roomDomId, fromDomId, toDomId, stratDomId) {
+    let roomId = document.getElementById(roomDomId).value;
+    let fromNode = document.getElementById(fromDomId);
+    let toNode = document.getElementById(toDomId);
+    let strat = document.getElementById(stratDomId);
     
     fromNode.options.length = 1;
     toNode.options.length = 1;
@@ -415,10 +416,10 @@ async function updateNodeOptions() {
     }
 }
 
-async function updateStratOptions() {
-    let stratSelect = document.getElementById("strat");
-    let fromNodeId = document.getElementById("fromNode").value;
-    let toNodeId = document.getElementById("toNode").value;
+async function updateStratOptions(stratDomId, fromDomId, toDomId) {
+    let stratSelect = document.getElementById(stratDomId);
+    let fromNodeId = document.getElementById(fromDomId).value;
+    let toNodeId = document.getElementById(toDomId).value;
 
     stratSelect.options.length = 1;
     if (roomSummary === null) {
@@ -572,8 +573,35 @@ loginModal.addEventListener('show.bs.modal', function (event) {
     document.getElementById("loginFailed").classList.add("d-none");
 });
 
+async function updateUserList() {
+    let response = await fetch("/list-users");
+    if (!response.ok) {
+        console.log("Error fetching user list: " + response.text());
+        return;
+    }
+    let userList = await response.json();
+    let userSelect = document.getElementById("filterUser");
+    userSelect.options.length = 1;
+    for (userInfo of userList) {
+        var opt = document.createElement('option');
+        opt.value = userInfo.id;
+        opt.innerText = userInfo.username;
+        userSelect.appendChild(opt);
+    }
+    console.log("users: " + JSON.stringify(userList));
+}
+
+function updateFilter() {
+    let room = document.getElementById("filterRoom").value;
+    let fromNode = document.getElementById("filterFromNode").value;
+    let toNode = document.getElementById("filterToNode").value;
+    let strat = document.getElementById("filterStrat").value;
+    let account = document.getElementById("filterUser").value;
+}
 
 updateLogin();
-updateRoomOptions();
+updateRoomOptions([document.getElementById("room"), document.getElementById("filterRoom")]);
 updateFile();
 animateLoop();
+updateFilter();
+updateUserList();
