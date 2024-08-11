@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::{path::Path, str::FromStr};
 use tokio::io::AsyncWriteExt as _;
 use tokio_postgres::types::ToSql;
+use tokio::join;
 
 #[derive(strum::EnumString)]
 enum Permission {
@@ -501,6 +502,131 @@ async fn list_videos(req: web::Query<ListVideosRequest>, app_data: web::Data<App
     Ok(web::Json(out))
 }
 
+#[derive(Serialize)]
+struct AreaOveriew {
+    areas: Vec<AreaListing>
+}
+
+#[derive(Serialize)]
+struct AreaListing {
+    name: String,
+    rooms: Vec<RoomListing>,
+}
+
+#[derive(Serialize)]
+struct RoomListing {
+    id: i32,
+    name: String
+}
+
+async fn try_list_rooms_by_area(app_data: &AppData) -> Result<AreaOveriew> {
+    let db = app_data.db.get().await?;
+    let stmt = db.prepare_cached("SELECT area_id, name FROM area ORDER BY area_id").await?;
+    let area_fut = db.query(&stmt, &[]);
+
+    let stmt = db.prepare_cached("SELECT room_id, area_id, name FROM room").await?;
+    let room_fut = db.query(&stmt, &[]);
+    let (area_result, room_result) = join!(area_fut, room_fut);
+    
+    let mut areas: Vec<AreaListing> = vec![];
+    for row in area_result? {
+        let area_id: i32 = row.get(0);
+        if area_id as usize != areas.len() {
+            bail!("Unexpected sequence of area IDs");
+        }
+        let name: String = row.get(1);
+        areas.push(AreaListing { name, rooms: vec![] });
+    }
+    for row in room_result? {
+        let room_id: i32 = row.get(0);
+        let area_id: i32 = row.get(1);
+        let name: String = row.get(2);
+        areas[area_id as usize].rooms.push(RoomListing {
+            id: room_id,
+            name
+        });
+    }
+    
+    Ok(AreaOveriew { areas })
+}
+
+#[get("/rooms-by-area")]
+async fn list_rooms_by_area(app_data: web::Data<AppData>) -> actix_web::Result<impl Responder> {
+    let v = try_list_rooms_by_area(&app_data)
+        .await
+        .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
+    Ok(web::Json(v))
+}
+
+#[derive(Deserialize)]
+struct NodeListQuery {
+    room_id: i32,
+}
+
+#[derive(Serialize)]
+struct NodeListing {
+    id: i32,
+    name: String,
+}
+
+async fn try_list_nodes(app_data: &AppData, query: &NodeListQuery) -> Result<Vec<NodeListing>> {
+    let db = app_data.db.get().await?;
+    let stmt = db.prepare_cached("SELECT node_id, name FROM node WHERE room_id=$1 ORDER BY node_id").await?;
+    let node_rows = db.query(&stmt, &[&query.room_id]).await?;
+    let mut node_listings: Vec<NodeListing> = vec![];
+    for row in node_rows {
+        let node_id: i32 = row.get(0);
+        let name: String = row.get(1);
+        node_listings.push(NodeListing { id: node_id, name });
+    }    
+    Ok(node_listings)
+}
+
+#[get("/nodes")]
+async fn list_nodes(app_data: web::Data<AppData>, query: web::Query<NodeListQuery>) -> actix_web::Result<impl Responder> {
+    let v = try_list_nodes(&app_data, &query)
+        .await
+        .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
+    Ok(web::Json(v))
+}
+
+#[derive(Deserialize)]
+struct StratListQuery {
+    room_id: i32,
+    from_node_id: i32,
+    to_node_id: i32,
+}
+
+#[derive(Serialize)]
+struct StratListing {
+    id: i32,
+    name: String,
+}
+
+async fn try_list_strats(app_data: &AppData, query: &StratListQuery) -> Result<Vec<StratListing>> {
+    let db = app_data.db.get().await?;
+    let stmt = db.prepare_cached(r#"
+      SELECT strat_id, name FROM strat 
+      WHERE room_id=$1 AND from_node_id=$2 AND to_node_id=$3
+      ORDER BY strat_id"#).await?;
+    let strat_rows = db.query(&stmt, &[&query.room_id, &query.from_node_id, &query.to_node_id]).await?;
+    let mut strat_listings: Vec<StratListing> = vec![];
+    for row in strat_rows {
+        let strat_id: i32 = row.get(0);
+        let name: String = row.get(1);
+        strat_listings.push(StratListing { id: strat_id, name });
+    }    
+    Ok(strat_listings)
+}
+
+#[get("/strats")]
+async fn list_strats(app_data: web::Data<AppData>, query: web::Query<StratListQuery>) -> actix_web::Result<impl Responder> {
+    let v = try_list_strats(&app_data, &query)
+        .await
+        .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
+    Ok(web::Json(v))
+}
+
 #[actix_web::main]
 async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -520,6 +646,9 @@ async fn main() {
             .service(submit_video)
             .service(list_users)
             .service(list_videos)
+            .service(list_rooms_by_area)
+            .service(list_nodes)
+            .service(list_strats)
             .service(actix_files::Files::new("/js", "../js"))
             .service(actix_files::Files::new("/static", "static"))
     })

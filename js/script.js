@@ -3,7 +3,6 @@ var frameOffsets = null;
 var animationEnabled = false;
 var animationFrameResolution = 3;
 var animationFrame = 0;
-var roomSummary;
 var videoId = null;
 var uploading = false;
 var doneUploading = false;
@@ -368,7 +367,7 @@ async function updateFile() {
 }
 
 async function updateRoomOptions(roomSelectList) {
-    let overviewResponse = await fetch(smMetadataUrl + "rooms.json");
+    let overviewResponse = await fetch("/rooms-by-area");
     if (!overviewResponse.ok) {
         throw new Error(`Error fetching rooms.json: ${overviewResponse.status}`);
     }
@@ -399,12 +398,15 @@ async function updateNodeOptions(roomDomId, fromDomId, toDomId, stratDomId) {
     strat.options.length = 1;
 
     if (roomId != "") {
-        let roomResponse = await fetch(smMetadataUrl + `room/${roomId}.json`);
+        let req = {room_id: roomId};
+        let params = new URLSearchParams(req).toString();
+        let roomResponse = await fetch(`/nodes?${params}`);
+    
         if (!roomResponse.ok) {
-            throw new Error(`Error fetching room/${roomId}.json: ${roomResponse.status}`);
+            throw new Error(`Error ${roomResponse.status} fetching nodes: ${await roomResponse.text()}`);
         }
-        roomSummary = await roomResponse.json();
-        for (const node of roomSummary.nodes) {
+        let nodeList = await roomResponse.json();
+        for (const node of nodeList) {
             var opt = document.createElement('option');
             opt.value = node.id;
             opt.innerText = `${node.id}: ${node.name}`;
@@ -418,22 +420,29 @@ async function updateNodeOptions(roomDomId, fromDomId, toDomId, stratDomId) {
     }
 }
 
-async function updateStratOptions(stratDomId, fromDomId, toDomId) {
+async function updateStratOptions(roomDomId, stratDomId, fromDomId, toDomId) {
+    let roomId = document.getElementById(roomDomId).value;
     let stratSelect = document.getElementById(stratDomId);
     let fromNodeId = document.getElementById(fromDomId).value;
     let toNodeId = document.getElementById(toDomId).value;
 
     stratSelect.options.length = 1;
-    if (roomSummary === null) {
+    if (roomId == "" || fromNodeId == "" || toNodeId == "") {
         return;
     }
-    for (const strat of roomSummary.strats) {
-        if (strat.from_node_id == fromNodeId && strat.to_node_id == toNodeId) {
-            var opt = document.createElement('option');
-            opt.value = strat.id;
-            opt.innerText = `${strat.id}: ${strat.name}`;
-            stratSelect.appendChild(opt);    
-        }
+    let req = {room_id: roomId, from_node_id: fromNodeId, to_node_id: toNodeId};
+    let params = new URLSearchParams(req).toString();
+    let response = await fetch(`/strats?${params}`);
+
+    if (!response.ok) {
+        throw new Error(`Error ${response.status} fetching strats: ${await response.text()}`);
+    }
+    let stratList = await response.json();
+    for (const strat of stratList) {
+        var opt = document.createElement('option');
+        opt.value = strat.id;
+        opt.innerText = `${strat.id}: ${strat.name}`;
+        stratSelect.appendChild(opt);    
     }
 }
 
@@ -682,7 +691,7 @@ async function updateFilter() {
             textCol.appendChild(pUpdated);    
         }
 
-        
+
 
         row.appendChild(imgCol);
         row.appendChild(textCol);
