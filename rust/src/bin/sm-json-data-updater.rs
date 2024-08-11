@@ -1,14 +1,15 @@
 use std::{collections::HashMap, fs, path::Path, sync::Mutex};
 
 use actix_web::{self, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder};
+use anyhow::Result;
 use clap::Parser;
+use futures::pin_mut;
 use git2::Repository;
 use log::info;
-use object_store::{
-    gcp::GoogleCloudStorageBuilder, local::LocalFileSystem, memory::InMemory, Attribute,
-    AttributeValue, Attributes, ObjectStore, PutOptions,
+use tokio_postgres::{
+    binary_copy::BinaryCopyInWriter,
+    types::{ToSql, Type},
 };
-use serde::Serialize;
 
 #[derive(Parser)]
 struct Args {
@@ -18,56 +19,51 @@ struct Args {
     git_repo_branch: String,
     #[arg(long)]
     git_repo_local_path: String,
-    #[arg(long)]
-    object_store_bucket_url: String,
-    #[arg(long)]
-    object_store_prefix: String,
+    #[arg(long, env)]
+    postgres_host: String,
+    #[arg(long, env)]
+    postgres_db: String,
+    #[arg(long, env)]
+    postgres_user: String,
+    #[arg(long, env)]
+    postgres_password: String,
 }
 
 struct AppData {
     git_repository: Mutex<Repository>,
     git_branch: String,
-    object_store: Box<dyn ObjectStore>,
-    object_store_prefix: String,
+    db: deadpool_postgres::Pool,
 }
 
-// Structure for the overview file `rooms.json`, loaded when opening the page `videos.maprando.com`,
-// in order to populate the options for "Room" when uploading/editing a video.
-#[derive(Serialize, Clone)]
-struct OverviewData {
+struct SMJsonDataSummary {
     areas: Vec<AreaData>,
+    rooms: Vec<RoomData>,
+    nodes: Vec<NodeData>,
+    strats: Vec<StratData>,
 }
 
-#[derive(Serialize, Clone)]
 struct AreaData {
-    name: String,
-    rooms: Vec<RoomOverviewData>,
-}
-
-#[derive(Serialize, Clone)]
-struct RoomOverviewData {
-    id: i64,
+    area_id: i32,
     name: String,
 }
 
-// Structure for individual room metadata files (loaded on-demand by the browser, after a room is selected):
-#[derive(Serialize, Clone)]
 struct RoomData {
-    nodes: Vec<NodeData>,   // (node ID, node name)
-    strats: Vec<StratData>, // (from node ID, to node ID, strat name)
-}
-
-#[derive(Serialize, Clone)]
-struct NodeData {
-    id: i64,
+    room_id: i32,
+    area_id: i32,
     name: String,
 }
 
-#[derive(Serialize, Clone)]
+struct NodeData {
+    room_id: i32,
+    node_id: i32,
+    name: String,
+}
+
 struct StratData {
-    id: i64,
-    from_node_id: i64,
-    to_node_id: i64,
+    room_id: i32,
+    strat_id: i32,
+    from_node_id: i32,
+    to_node_id: i32,
     name: String,
 }
 
@@ -93,85 +89,6 @@ pub fn create_repo(url: &str, branch: &str, path_str: &str) -> Repository {
         update_repo(&repo, branch);
         repo
     }
-}
-
-pub fn create_object_store(url: &str) -> Box<dyn ObjectStore> {
-    let object_store: Box<dyn ObjectStore> = if url.starts_with("gs:") {
-        Box::new(
-            GoogleCloudStorageBuilder::from_env()
-                .with_url(url)
-                .build()
-                .unwrap(),
-        )
-    } else if url == "mem" {
-        Box::new(InMemory::new())
-    } else if url.starts_with("file:") {
-        let root = &url[5..];
-        Box::new(LocalFileSystem::new_with_prefix(Path::new(root)).unwrap())
-    } else {
-        panic!("Unsupported seed repository type: {}", url);
-    };
-    object_store
-}
-
-fn get_uncached_put_opts() -> PutOptions {
-    let mut put_attrs = Attributes::new();
-    put_attrs.insert(Attribute::CacheControl, AttributeValue::from("no-cache"));
-    let put_options = PutOptions {
-        mode: object_store::PutMode::Overwrite,
-        tags: object_store::TagSet::default(),
-        attributes: put_attrs,
-    };
-    put_options
-}
-
-async fn process_room(room_json: &serde_json::Value, app_data: web::Data<AppData>) {
-    let room_id = room_json["id"].as_i64().unwrap();
-
-    let mut node_listing: Vec<NodeData> = vec![];
-    for node_json in room_json["nodes"].as_array().unwrap() {
-        let node_id = node_json["id"].as_i64().unwrap();
-        let node_name = node_json["name"].as_str().unwrap().to_string();
-        node_listing.push(NodeData {
-            id: node_id,
-            name: node_name,
-        });
-    }
-
-    let mut strat_listing: Vec<StratData> = vec![];
-    for strat_json in room_json["strats"].as_array().unwrap() {
-        let id = strat_json["id"].as_i64().unwrap_or(0);
-        if id == 0 {
-            // Skip strats that don't yet have an ID assigned.
-            continue;
-        }
-        let link = strat_json["link"].as_array().unwrap();
-        let from_node_id = link[0].as_i64().unwrap();
-        let to_node_id = link[1].as_i64().unwrap();
-        let strat_name = strat_json["name"].as_str().unwrap().to_string();
-        strat_listing.push(StratData {
-            id,
-            from_node_id,
-            to_node_id,
-            name: strat_name,
-        });
-    }
-
-    let room_data = RoomData {
-        nodes: node_listing,
-        strats: strat_listing,
-    };
-    let room_data_str = serde_json::to_string(&room_data).unwrap();
-    let object_path = object_store::path::Path::parse(format!(
-        "{}room/{}.json",
-        app_data.object_store_prefix, room_id
-    ))
-    .unwrap();
-    app_data
-        .object_store
-        .put_opts(&object_path, room_data_str.into(), get_uncached_put_opts())
-        .await
-        .unwrap();
 }
 
 fn get_area_order() -> Vec<String> {
@@ -215,14 +132,24 @@ fn get_area(room_json: &serde_json::Value) -> String {
     full_area
 }
 
-async fn update_rooms(git_repo: &Repository, app_data: web::Data<AppData>) {
+fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
+    let area_names = get_area_order();
+    let mut area_map: HashMap<String, i32> = HashMap::new();
+    let mut areas: Vec<AreaData> = vec![];
+    let mut rooms: Vec<RoomData> = vec![];
+    let mut nodes: Vec<NodeData> = vec![];
+    let mut strats: Vec<StratData> = vec![];
+
+    for (i, name) in area_names.iter().enumerate() {
+        areas.push(AreaData {
+            area_id: i as i32,
+            name: name.to_string(),
+        });
+        area_map.insert(name.clone(), i as i32);
+    }
+
     let region_pattern =
         git_repo.workdir().unwrap().to_str().unwrap().to_string() + "/region/**/*.json";
-    info!(
-        "Processing rooms at {}, updating {}/{}",
-        region_pattern, app_data.object_store, app_data.object_store_prefix
-    );
-    let mut room_listing_by_area: HashMap<String, Vec<RoomOverviewData>> = HashMap::new();
     for entry in glob::glob(&region_pattern).unwrap() {
         if let Ok(path) = entry {
             let path_str = path.to_str().unwrap();
@@ -232,73 +159,203 @@ async fn update_rooms(git_repo: &Repository, app_data: web::Data<AppData>) {
 
             let room_str = fs::read_to_string(path).unwrap();
             let room_json: serde_json::Value = serde_json::from_str(&room_str).unwrap();
-            let room_id = room_json["id"].as_i64().unwrap();
-            let room_name = room_json["name"].as_str().unwrap().to_string();
+            let room_id = room_json["id"].as_i64().unwrap() as i32;
+            let area_name = get_area(&room_json);
+            let area_id = area_map[&area_name];
+            rooms.push(RoomData {
+                room_id,
+                area_id,
+                name: room_json["name"].as_str().unwrap().to_string(),
+            });
 
-            let area = get_area(&room_json);
-            room_listing_by_area
-                .entry(area)
-                .or_default()
-                .push(RoomOverviewData {
-                    id: room_id,
-                    name: room_name,
+            for node_json in room_json["nodes"].as_array().unwrap() {
+                let node_id = node_json["id"].as_i64().unwrap() as i32;
+                let node_name = node_json["name"].as_str().unwrap().to_string();
+                nodes.push(NodeData {
+                    room_id,
+                    node_id,
+                    name: node_name,
                 });
-            process_room(&room_json, app_data.clone()).await;
+            }
+
+            for strat_json in room_json["strats"].as_array().unwrap() {
+                let strat_id = strat_json["id"].as_i64().unwrap_or(0) as i32;
+                if strat_id == 0 {
+                    // Skip strats that don't yet have an ID assigned.
+                    continue;
+                }
+                let link = strat_json["link"].as_array().unwrap();
+                let from_node_id = link[0].as_i64().unwrap() as i32;
+                let to_node_id = link[1].as_i64().unwrap() as i32;
+                let strat_name = strat_json["name"].as_str().unwrap().to_string();
+                strats.push(StratData {
+                    room_id,
+                    strat_id,
+                    from_node_id,
+                    to_node_id,
+                    name: strat_name,
+                });
+            }
         }
     }
 
-    let mut area_data_vec = vec![];
-    for area in get_area_order() {
-        area_data_vec.push(AreaData {
-            name: area.clone(),
-            rooms: room_listing_by_area[&area].clone(),
-        });
+    Ok(SMJsonDataSummary {
+        areas,
+        rooms,
+        nodes,
+        strats,
+    })
+}
+
+async fn write_area_table(app_data: &AppData, areas: &[AreaData]) -> Result<()> {
+    let mut db = app_data.db.get().await?;
+    let tran = db.transaction().await?;
+    let stmt = tran.prepare_cached("TRUNCATE TABLE area").await?;
+    tran.execute(&stmt, &[]).await?;
+    let sink = tran
+        .copy_in("COPY area (area_id, name) FROM STDIN BINARY")
+        .await?;
+    let writer = BinaryCopyInWriter::new(sink, &[Type::INT4, Type::VARCHAR]);
+    pin_mut!(writer);
+    let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
+    for area in areas {
+        row.clear();
+        row.push(&area.area_id);
+        row.push(&area.name);
+        writer.as_mut().write(&row).await?;
     }
-    let overview_data = OverviewData {
-        areas: area_data_vec,
-    };
-    let room_listing_str = serde_json::to_string(&overview_data).unwrap();
-    let object_path =
-        object_store::path::Path::parse(format!("{}rooms.json", app_data.object_store_prefix))
-            .unwrap();
-    app_data
-        .object_store
-        .put_opts(
-            &object_path,
-            room_listing_str.into(),
-            get_uncached_put_opts(),
-        )
-        .await
-        .unwrap();
+    writer.finish().await?;
+    tran.commit().await?;
+    Ok(())
+}
+
+async fn write_room_table(app_data: &AppData, rooms: &[RoomData]) -> Result<()> {
+    let mut db = app_data.db.get().await?;
+    let tran = db.transaction().await?;
+    let stmt = tran.prepare_cached("TRUNCATE TABLE room").await?;
+    tran.execute(&stmt, &[]).await?;
+    let sink = tran
+        .copy_in("COPY room (room_id, area_id, name) FROM STDIN BINARY")
+        .await?;
+    let writer = BinaryCopyInWriter::new(sink, &[Type::INT4, Type::INT4, Type::VARCHAR]);
+    pin_mut!(writer);
+    let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
+    for room in rooms {
+        row.clear();
+        row.push(&room.room_id);
+        row.push(&room.area_id);
+        row.push(&room.name);
+        writer.as_mut().write(&row).await?;
+    }
+    writer.finish().await?;
+    tran.commit().await?;
+    Ok(())
+}
+
+async fn write_node_table(app_data: &AppData, nodes: &[NodeData]) -> Result<()> {
+    let mut db = app_data.db.get().await?;
+    let tran = db.transaction().await?;
+    let stmt = tran.prepare_cached("TRUNCATE TABLE node").await?;
+    tran.execute(&stmt, &[]).await?;
+    let sink = tran
+        .copy_in("COPY node (room_id, node_id, name) FROM STDIN BINARY")
+        .await?;
+    let writer = BinaryCopyInWriter::new(sink, &[Type::INT4, Type::INT4, Type::VARCHAR]);
+    pin_mut!(writer);
+    let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
+    for node in nodes {
+        row.clear();
+        row.push(&node.room_id);
+        row.push(&node.node_id);
+        row.push(&node.name);
+        writer.as_mut().write(&row).await?;
+    }
+    writer.finish().await?;
+    tran.commit().await?;
+    Ok(())
+}
+
+async fn write_strat_table(app_data: &AppData, nodes: &[StratData]) -> Result<()> {
+    let mut db = app_data.db.get().await?;
+    let tran = db.transaction().await?;
+    let stmt = tran.prepare_cached("TRUNCATE TABLE strat").await?;
+    tran.execute(&stmt, &[]).await?;
+    let sink = tran
+        .copy_in("COPY strat (room_id, strat_id, from_node_id, to_node_id, name) FROM STDIN BINARY")
+        .await?;
+    let writer = BinaryCopyInWriter::new(sink, &[Type::INT4, Type::INT4, Type::INT4, Type::INT4, Type::VARCHAR]);
+    pin_mut!(writer);
+    let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
+    for node in nodes {
+        row.clear();
+        row.push(&node.room_id);
+        row.push(&node.strat_id);
+        row.push(&node.from_node_id);
+        row.push(&node.to_node_id);
+        row.push(&node.name);
+        writer.as_mut().write(&row).await?;
+    }
+    writer.finish().await?;
+    tran.commit().await?;
+    Ok(())
+}
+
+async fn update_tables(git_repo: &Repository, app_data: &AppData) -> Result<()> {
+    info!("Loading sm-json-data summary");
+    let summary = load_sm_data_summary(git_repo)?;
+    info!("Rewriting database tables");
+    write_area_table(app_data, &summary.areas).await?;
+    write_room_table(app_data, &summary.rooms).await?;
+    write_node_table(app_data, &summary.nodes).await?;
+    write_strat_table(app_data, &summary.strats).await?;
+    info!("Successfully rewrote tables");
+    Ok(())
 }
 
 #[post("/update")]
 async fn update_data(app_data: web::Data<AppData>) -> impl Responder {
     let git_repo = app_data.git_repository.lock().unwrap();
     update_repo(&git_repo, &app_data.git_branch);
-    update_rooms(&git_repo, app_data.clone()).await;
+    update_tables(&git_repo, &app_data).await.unwrap();
     HttpResponse::Ok().body("")
 }
 
-#[actix_web::main]
-async fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .format_timestamp_millis()
-        .init();
-
+fn build_app_data() -> AppData {
     let args = Args::parse();
 
-    let app_data = actix_web::web::Data::new(AppData {
+    let mut config = deadpool_postgres::Config::new();
+    config.host = Some(args.postgres_host.clone());
+    config.dbname = Some(args.postgres_db.clone());
+    config.user = Some(args.postgres_user.clone());
+    config.password = Some(args.postgres_password.clone());
+    let db_pool = config
+        .create_pool(
+            Some(deadpool_postgres::Runtime::Tokio1),
+            tokio_postgres::NoTls,
+        )
+        .unwrap();
+
+    let app_data = AppData {
         git_repository: Mutex::new(create_repo(
             &args.git_repo_url,
             &args.git_repo_branch,
             &args.git_repo_local_path,
         )),
         git_branch: args.git_repo_branch,
-        object_store: create_object_store(&args.object_store_bucket_url),
-        object_store_prefix: args.object_store_prefix,
-    });
-    update_rooms(&app_data.git_repository.lock().unwrap(), app_data.clone()).await;
+        db: db_pool,
+    };
+
+    app_data
+}
+
+#[actix_web::main]
+async fn main() -> Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .init();
+
+    let app_data = actix_web::web::Data::new(build_app_data());
+    update_tables(&app_data.git_repository.lock().unwrap(), &app_data).await?;
 
     HttpServer::new(move || {
         App::new()
@@ -312,4 +369,6 @@ async fn main() {
     .run()
     .await
     .unwrap();
+
+    Ok(())
 }

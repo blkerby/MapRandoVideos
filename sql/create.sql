@@ -29,3 +29,32 @@ CREATE TABLE video (
     highlight_end_t integer,
     permanent boolean
 );
+
+--- Extract of essential metadata from sm-json-data, kept up-to-date by `sm-json-data-updater`:
+
+CREATE TABLE area (
+    area_id integer PRIMARY KEY,
+    name varchar(1000)
+);
+
+CREATE TABLE room (
+    room_id integer PRIMARY KEY,
+    area_id integer,
+    name varchar(1000)
+);
+
+CREATE TABLE node (
+    room_id integer,
+    node_id integer,
+    name varchar(1000),
+    PRIMARY KEY (room_id, node_id)
+);
+
+CREATE TABLE strat (
+    room_id integer,
+    strat_id integer,
+    from_node_id integer,
+    to_node_id integer,
+    name varchar(1000),
+    PRIMARY KEY (room_id, strat_id)
+);

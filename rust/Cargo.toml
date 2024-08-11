@@ -24,3 +24,4 @@ actix-web-httpauth = "0.8.2"
 futures-util = "0.3.30"
 async-compression = {version = "0.4.12", features = ["tokio", "gzip", "xz"]}
 chrono = "0.4.38"
+futures = "0.3.30"

@@ -1363,6 +1363,7 @@ dependencies = [
  "clap",
  "deadpool-postgres",
  "env_logger",
+ "futures",
  "futures-util",
  "git2",
  "glob",

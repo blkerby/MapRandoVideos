@@ -8,6 +8,7 @@ var videoId = null;
 var uploading = false;
 var doneUploading = false;
 var submitting = false;
+var userMapping = null;
 
 function readSlice(file, start, size) {
     return new Promise(function(resolve, reject) {
@@ -582,12 +583,15 @@ async function updateUserList() {
     }
     let userList = await response.json();
     let userSelect = document.getElementById("filterUser");
+    userMapping = {};
     userSelect.options.length = 1;
     for (userInfo of userList) {
         var opt = document.createElement('option');
         opt.value = userInfo.id;
         opt.innerText = userInfo.username;
         userSelect.appendChild(opt);
+
+        userMapping[userInfo.id] = userInfo.username;
     }
 }
 
@@ -622,12 +626,75 @@ async function updateFilter() {
     if (!result.ok) {
         throw new Error(`HTTP ${result.status} fetching video list: ${await result.text()}`);
     }
-    console.log("video list: " + JSON.stringify(await result.json()));
+
+    let videoList = await result.json();
+    document.getElementById("videoCount").innerText = videoList.length;
+
+    let videoTableBody = document.getElementById("videoTableBody");
+    videoTableBody.innerHTML = "";
+      
+    let dateFormat = new Intl.DateTimeFormat(undefined, {
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour12: 'false',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZoneName: 'short',
+    });
+    for (const video of videoList) {
+        let tr = document.createElement('tr');
+        let td = document.createElement('td');
+        td.classList.add("p-2");
+        let row = document.createElement('div');
+        row.classList.add("row");
+
+        let imgCol = document.createElement('div');
+        imgCol.classList.add("text-center");
+        imgCol.classList.add("col-sm-4");
+        imgCol.classList.add("col-md-3");
+        imgCol.classList.add("col-lg-2");
+
+        let textCol = document.createElement('div');
+        textCol.classList.add("col-sm-8");
+        textCol.classList.add("col-md-9");
+        textCol.classList.add("col-lg-10");
+
+        let pCreated = document.createElement('p');
+        pCreated.classList.add("m-0");
+        let createdUsername = userMapping[video.created_user_id];
+        let createdTime = new Date();
+        createdTime.setTime(video.created_ts);
+        let createdTimeStr = dateFormat.format(createdTime);
+        pCreated.innerHTML = `Created by <i>${createdUsername}</i> on ${createdTimeStr}`;
+        textCol.appendChild(pCreated);
+
+        if (video.updated_ts != video.created_ts || video.updated_user_id != video.created_user_id) {
+            let pUpdated = document.createElement('p');
+            pUpdated.classList.add("m-0");
+            let updatedUsername = userMapping[video.updated_user_id];
+            let updatedTime = new Date();
+            updatedTime.setTime(video.updated_ts);
+            let updatedTimeStr = dateFormat.format(updatedTime);
+            pUpdated.innerHTML = `Updated by <i>${updatedUsername}</i> on ${updatedTimeStr}`;
+            textCol.appendChild(pUpdated);    
+        }
+
+        
+
+        row.appendChild(imgCol);
+        row.appendChild(textCol);
+        td.appendChild(row);
+        tr.appendChild(td);
+        videoTableBody.appendChild(tr);
+    }
 }
 
 updateLogin();
 updateRoomOptions([document.getElementById("room"), document.getElementById("filterRoom")]);
 updateFile();
 animateLoop();
-updateFilter();
 updateUserList();
+updateFilter();

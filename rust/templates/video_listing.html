@@ -3,7 +3,7 @@
         <label for="filterRoom">Room</label>
     </div>
     <div class="col-lg-11 col-sm-10">
-        <select id="filterRoom" class="form-select" name="filter_room_id" onchange="updateNodeOptions('filterRoom', 'filterFromNode', 'filterToNode', 'filterStrat'); updateFilter()">
+        <select id="filterRoom" class="form-select" onchange="updateNodeOptions('filterRoom', 'filterFromNode', 'filterToNode', 'filterStrat'); updateFilter()">
             <option value="">Filter by room</option>
         </select>
     </div>
@@ -13,7 +13,7 @@
         <label for="filterFromNode">From</label>
     </div>
     <div class="col-lg-11 col-sm-10">
-        <select id="filterFromNode" class="form-select" name="filter_from_node_id" onchange="updateStratOptions('filterStrat', 'filterFromNode', 'filterToNode'); updateFilter()">
+        <select id="filterFromNode" class="form-select" onchange="updateStratOptions('filterStrat', 'filterFromNode', 'filterToNode'); updateFilter()">
             <option value="">Filter by "from" node</option>
         </select>
     </div>
@@ -23,7 +23,7 @@
         <label for="filterToNode">To</label>
     </div>
     <div class="col-lg-11 col-sm-10">
-        <select id="filterToNode" class="form-select" name="filter_to_node_id" onchange="updateStratOptions('filterStrat', 'filterFromNode', 'filterToNode'); updateFilter()">
+        <select id="filterToNode" class="form-select" onchange="updateStratOptions('filterStrat', 'filterFromNode', 'filterToNode'); updateFilter()">
             <option value="">Filter by "to" node</option>
         </select>
     </div>
@@ -33,7 +33,7 @@
         <label for="filterStrat">Strat</label>
     </div>
     <div class="col-lg-11 col-sm-10">
-        <select id="filterStrat" class="form-select" name="filter_strat_id" onchange="updateFilter()">
+        <select id="filterStrat" class="form-select" onchange="updateFilter()">
             <option value="">Filter by strat</option>
         </select>
     </div>
@@ -42,9 +42,35 @@
     <div class="col-lg-1 col-sm-2 text-sm-end">
         <label for="filterUser">User</label>
     </div>
-    <div class="col-lg-11 col-sm-10">
-        <select id="filterUser" class="form-select" name="filter_account_id" onchange="updateFilter()">
-            <option value="">Filter by uploaded user</option>
+    <div class="col-lg-5 col-sm-4">
+        <select id="filterUser" class="form-select" onchange="updateFilter()">
+            <option value="">Filter by user</option>
         </select>
+    </div>
+    <div class="col-lg-1 col-sm-2 text-sm-end">
+        <label for="filterSortBy">Sort by</label>
+    </div>
+    <div class="col-lg-5 col-sm-4">
+        <select id="filterSortBy" class="form-select" onchange="updateFilter()">
+            <option value="CreatedTimestamp">Created time</option>
+            <option value="UpdatedTimestamp">Updated time</option>
+        </select>
+    </div>
+</div>
+
+<div class="card my-3">
+    <div class="card-header">Videos (<span id="videoCount"></span>)</div>
+    <div class="card-body p-0">
+        <style>
+            html[data-bs-theme=dark] .table {
+                --bs-table-hover-bg: #2b3035;
+            }
+            html[data-bs-theme=light] .table {
+                --bs-table-hover-bg: #f4f5f6;
+            }
+        </style>
+        <table class="table table-hover mb-0">
+            <tbody id="videoTableBody"></tbody>
+        </table>
     </div>
 </div>
