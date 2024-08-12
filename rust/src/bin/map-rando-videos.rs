@@ -10,6 +10,7 @@ use askama::Template;
 use clap::Parser;
 use futures_util::StreamExt as _;
 use log::{error, info};
+use map_rando_videos::EncodingTask;
 use object_store::{
     gcp::GoogleCloudStorageBuilder, local::LocalFileSystem, memory::InMemory, ObjectStore,
 };
@@ -36,6 +37,10 @@ struct Args {
     #[arg(long, env)]
     postgres_password: String,
     #[arg(long, env)]
+    rabbit_url: String,
+    #[arg(long, env)]
+    rabbit_queue: String,
+    #[arg(long, env)]
     sm_json_data_summary_url: String,
     #[arg(long, env)]
     video_storage_bucket_url: String,
@@ -45,16 +50,17 @@ struct Args {
     xz_compression_level: i32,
 }
 
-#[derive(Template)]
-#[template(path = "home.html")]
-struct HomeTemplate {
-    sm_json_data_summary_url: String,
-}
-
 struct AppData {
     args: Args,
     db: deadpool_postgres::Pool,
     video_store: Box<dyn ObjectStore>,
+    mq: deadpool_lapin::Pool,
+}
+
+#[derive(Template)]
+#[template(path = "home.html")]
+struct HomeTemplate {
+    sm_json_data_summary_url: String,
 }
 
 pub fn create_object_store(url: &str) -> Box<dyn ObjectStore> {
@@ -79,25 +85,36 @@ pub fn create_object_store(url: &str) -> Box<dyn ObjectStore> {
 async fn build_app_data() -> AppData {
     let args = Args::parse();
 
+    // Create Postgres connection pool
     let mut config = deadpool_postgres::Config::new();
     config.host = Some(args.postgres_host.clone());
     config.dbname = Some(args.postgres_db.clone());
     config.user = Some(args.postgres_user.clone());
     config.password = Some(args.postgres_password.clone());
-    let pool = config
+    let db_pool = config
         .create_pool(
             Some(deadpool_postgres::Runtime::Tokio1),
             tokio_postgres::NoTls,
         )
         .unwrap();
-
     // Get a test connection, to fail now in case we can't connect to the database.
-    let _ = pool.get().await.unwrap();
+    let _ = db_pool.get().await.unwrap();
+
+    // Create RabbitMQ connection pool
+    let mut cfg = deadpool_lapin::Config::default();
+    cfg.url = Some(args.rabbit_url.clone());
+    let mq_pool = cfg.create_pool(Some(deadpool_lapin::Runtime::Tokio1)).unwrap();
+    let mq = mq_pool.get().await.unwrap();
+    let channel = mq.create_channel().await.unwrap();
+    let mut opts = lapin::options::QueueDeclareOptions::default();
+    opts.durable = true;
+    channel.queue_declare(&args.rabbit_queue, opts, lapin::types::FieldTable::default()).await.unwrap();
 
     // actix_web::rt::spawn
     AppData {
         video_store: create_object_store(&args.video_storage_bucket_url),
-        db: pool,
+        db: db_pool,
+        mq: mq_pool,
         args,
     }
 }
@@ -302,6 +319,53 @@ async fn try_submit_video(
         )
         .await?;
     info!("Submitted video");
+
+    // Send messages to RabbitMQ to trigger processes to encode the thumbnail image, animated highlight, and full video.
+    let mq = app_data.mq.get().await?;
+    let channel = mq.create_channel().await?;
+
+    let thumbnail_task = EncodingTask::ThumbnailImage {
+        video_id: req.video_id,
+        crop_center_x: req.crop_center_x,
+        crop_center_y: req.crop_center_y,
+        crop_size: req.crop_size,
+        frame_number: req.thumbnail_t,
+    };
+    channel.basic_publish(
+        "",
+        &app_data.args.rabbit_queue,
+        lapin::options::BasicPublishOptions::default(),
+        &serde_json::to_vec(&thumbnail_task)?,
+        lapin::BasicProperties::default(),
+    ).await?;
+
+    let highlight_task = EncodingTask::HighlightAnimation {
+        video_id: req.video_id,
+        crop_center_x: req.crop_center_x,
+        crop_center_y: req.crop_center_y,
+        crop_size: req.crop_size,
+        start_frame_number: req.highlight_start_t,
+        end_frame_number: req.highlight_end_t,
+    };
+    channel.basic_publish(
+        "",
+        &app_data.args.rabbit_queue,
+        lapin::options::BasicPublishOptions::default(),
+        &serde_json::to_vec(&highlight_task)?,
+        lapin::BasicProperties::default(),
+    ).await?;
+
+    let full_video_task = EncodingTask::FullVideo {
+        video_id: req.video_id,
+    };
+    channel.basic_publish(
+        "",
+        &app_data.args.rabbit_queue,
+        lapin::options::BasicPublishOptions::default(),
+        &serde_json::to_vec(&full_video_task)?,
+        lapin::BasicProperties::default(),
+    ).await?;
+
     Ok(())
 }
 
@@ -361,7 +425,7 @@ async fn list_users(app_data: web::Data<AppData>) -> actix_web::Result<impl Resp
 
 #[derive(Serialize, Deserialize, strum::EnumString)]
 enum ListVideosSortBy {
-    CreatedTimestamp,
+    SubmittedTimestamp,
     UpdatedTimestamp,
 }
 
@@ -391,7 +455,7 @@ enum VideoStatus {
 struct VideoListing {
     id: i32,
     created_user_id: i32,
-    created_ts: i64,
+    submitted_ts: i64,
     updated_user_id: i32,
     updated_ts: i64,
     room_id: Option<i32>,
@@ -400,6 +464,10 @@ struct VideoListing {
     strat_id: Option<i32>,
     note: String,
     status: VideoStatus,
+    room_name: Option<String>,
+    from_node_name: Option<String>,
+    to_node_name: Option<String>,
+    strat_name: Option<String>,
 }
 
 async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<Vec<VideoListing>> {
@@ -407,41 +475,49 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
     sql_parts.push(format!(
         r#"
         SELECT 
-            id,
-            created_account_id,
-            created_ts,
-            updated_account_id,
-            updated_ts,
-            room_id,
-            from_node_id,
-            to_node_id,
-            strat_id,
-            note,
-            status
-        FROM video
+            v.id,
+            v.created_account_id,
+            v.submitted_ts,
+            v.updated_account_id,
+            v.updated_ts,
+            v.room_id,
+            v.from_node_id,
+            v.to_node_id,
+            v.strat_id,
+            v.note,
+            v.status,
+            r.name as room_name,
+            f.name as from_node_name,
+            t.name as to_node_name,
+            s.name as strat_name
+        FROM video v
+        LEFT JOIN room r ON r.room_id = v.room_id
+        LEFT JOIN node f ON f.room_id = v.room_id AND f.node_id = v.from_node_id
+        LEFT JOIN node t ON t.room_id = v.room_id AND t.node_id = v.to_node_id
+        LEFT JOIN strat s ON s.room_id = v.room_id AND s.strat_id = v.strat_id
         "#
     ));
 
     let mut sql_filters = vec![];
     let mut param_values: Vec<&(dyn ToSql + Sync)> = vec![];
     if req.room_id.is_some() {
-        sql_filters.push(format!("room_id = ${}", param_values.len() + 1));
+        sql_filters.push(format!("v.room_id = ${}", param_values.len() + 1));
         param_values.push(req.room_id.as_ref().unwrap());
     }
     if req.from_node_id.is_some() {
-        sql_filters.push(format!("from_node_id = ${}", param_values.len() + 1));
+        sql_filters.push(format!("v.from_node_id = ${}", param_values.len() + 1));
         param_values.push(req.from_node_id.as_ref().unwrap());
     }
     if req.to_node_id.is_some() {
-        sql_filters.push(format!("to_node_id = ${}", param_values.len() + 1));
+        sql_filters.push(format!("v.to_node_id = ${}", param_values.len() + 1));
         param_values.push(req.to_node_id.as_ref().unwrap());
     }
     if req.strat_id.is_some() {
-        sql_filters.push(format!("strat_id = ${}", param_values.len() + 1));
+        sql_filters.push(format!("v.strat_id = ${}", param_values.len() + 1));
         param_values.push(req.strat_id.as_ref().unwrap());
     }
     if req.user_id.is_some() {
-        sql_filters.push(format!("(created_account_id = ${} OR updated_account_id = ${})", param_values.len() + 1, param_values.len() + 1));
+        sql_filters.push(format!("(v.created_account_id = ${} OR v.updated_account_id = ${})", param_values.len() + 1, param_values.len() + 1));
         param_values.push(req.user_id.as_ref().unwrap());
     }
     if sql_filters.len() > 0 {
@@ -449,11 +525,11 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
     }
 
     match req.sort_by {
-        ListVideosSortBy::CreatedTimestamp => {
-            sql_parts.push("ORDER BY created_ts DESC\n".to_string());
+        ListVideosSortBy::SubmittedTimestamp => {
+            sql_parts.push("ORDER BY v.submitted_ts DESC\n".to_string());
         }
         ListVideosSortBy::UpdatedTimestamp => {
-            sql_parts.push("ORDER BY updated_ts DESC\n".to_string());
+            sql_parts.push("ORDER BY v.updated_ts DESC\n".to_string());
         }
     }
 
@@ -473,13 +549,13 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
     let result = db_client.query(&stmt, param_values.as_slice()).await?;
     let mut out: Vec<VideoListing> = vec![];
     for row in result {
-        let created_ts: chrono::DateTime<chrono::offset::Utc> = row.get("created_ts");
+        let submitted_ts: chrono::DateTime<chrono::offset::Utc> = row.get("submitted_ts");
         let updated_ts: chrono::DateTime<chrono::offset::Utc> = row.get("updated_ts");
         let status_str: String = row.get("status");
         out.push(VideoListing {
             id: row.get("id"),
             created_user_id: row.get("created_account_id"),
-            created_ts: created_ts.timestamp_millis(),
+            submitted_ts: submitted_ts.timestamp_millis(),
             updated_user_id: row.get("updated_account_id"),
             updated_ts: updated_ts.timestamp_millis(),
             room_id: row.get("room_id"),
@@ -488,6 +564,10 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
             strat_id: row.get("strat_id"),
             note: row.get("note"),
             status: VideoStatus::try_from(status_str.as_str())?,
+            room_name: row.get("room_name"),
+            from_node_name: row.get("from_node_name"),
+            to_node_name: row.get("to_node_name"),
+            strat_name: row.get("strat_name"),
         });
     }
 

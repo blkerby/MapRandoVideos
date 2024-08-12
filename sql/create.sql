@@ -27,6 +27,9 @@ CREATE TABLE video (
     thumbnail_t integer,
     highlight_start_t integer,
     highlight_end_t integer,
+    thumbnail_processed_ts timestamptz,
+    highlight_processed_ts timestamptz,
+    full_video_processed_ts timestamptz,
     permanent boolean
 );
 

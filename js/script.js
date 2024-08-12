@@ -572,6 +572,7 @@ async function submitVideo() {
         document.getElementById("thumbnail").classList.add("d-none");
         document.getElementById("highlightStart").classList.add("d-none");
         document.getElementById("highlightEnd").classList.add("d-none");
+        updateFilter();
     } else {
         resultText = await result.text();
         console.log(`Failed to submit video: ${resultText}`);
@@ -605,6 +606,10 @@ async function updateUserList() {
 }
 
 async function updateFilter() {
+    if (userMapping === null) {
+        await updateUserList();
+    }
+
     let room = document.getElementById("filterRoom").value;
     let fromNode = document.getElementById("filterFromNode").value;
     let toNode = document.getElementById("filterToNode").value;
@@ -627,7 +632,7 @@ async function updateFilter() {
     if (user != "") {
         req.user_id = parseInt(user);
     }
-    req.sort_by = "CreatedTimestamp";
+    req.sort_by = "SubmittedTimestamp";
     req.limit = 10;
 
     let params = new URLSearchParams(req).toString();
@@ -671,16 +676,16 @@ async function updateFilter() {
         textCol.classList.add("col-md-9");
         textCol.classList.add("col-lg-10");
 
-        let pCreated = document.createElement('p');
-        pCreated.classList.add("m-0");
+        let pSubmitted = document.createElement('p');
+        pSubmitted.classList.add("m-0");
         let createdUsername = userMapping[video.created_user_id];
-        let createdTime = new Date();
-        createdTime.setTime(video.created_ts);
-        let createdTimeStr = dateFormat.format(createdTime);
-        pCreated.innerHTML = `Created by <i>${createdUsername}</i> on ${createdTimeStr}`;
-        textCol.appendChild(pCreated);
+        let submittedTime = new Date();
+        submittedTime.setTime(video.submitted_ts);
+        let submittedTimeStr = dateFormat.format(submittedTime);
+        pSubmitted.innerHTML = `Submitted by <i>${createdUsername}</i> on ${submittedTimeStr}`;
+        textCol.appendChild(pSubmitted);
 
-        if (video.updated_ts != video.created_ts || video.updated_user_id != video.created_user_id) {
+        if (video.updated_ts != video.submitted_ts || video.updated_user_id != video.created_user_id) {
             let pUpdated = document.createElement('p');
             pUpdated.classList.add("m-0");
             let updatedUsername = userMapping[video.updated_user_id];
@@ -691,7 +696,45 @@ async function updateFilter() {
             textCol.appendChild(pUpdated);    
         }
 
+        if (video.room_id !== null) {
+            let pRoom = document.createElement('p');
+            pRoom.classList.add("m-0");
+            pRoom.innerText = `Room: ${video.room_name}`;
+            textCol.appendChild(pRoom);    
+        }
 
+        if (video.from_node_id !== null) {
+            let pFromNode = document.createElement('p');
+            pFromNode.classList.add("m-0");
+            pFromNode.innerText = `From ${video.from_node_id}: ${video.from_node_name}`;
+            textCol.appendChild(pFromNode);    
+        }
+
+        if (video.to_node_id !== null) {
+            let pToNode = document.createElement('p');
+            pToNode.classList.add("m-0");
+            pToNode.innerText = `To ${video.to_node_id}: ${video.to_node_name}`;
+            textCol.appendChild(pToNode);
+        }
+
+        if (video.strat_id !== null) {
+            let pStrat = document.createElement('p');
+            pStrat.classList.add("m-0");
+            pStrat.innerText = `Strat ${video.strat_id}: ${video.strat_name}`;
+            textCol.appendChild(pStrat);    
+        }
+
+        let pStatus = document.createElement('p');
+        pStatus.classList.add("m-0");
+        pStatus.innerText = `Status: ${video.status}`;
+        textCol.appendChild(pStatus);
+
+        if (video.note !== "") {
+            let pNote = document.createElement('p');
+            pNote.classList.add("m-0");
+            pNote.innerText = `Note: ${video.note}`;
+            textCol.appendChild(pNote);    
+        }
 
         row.appendChild(imgCol);
         row.appendChild(textCol);
