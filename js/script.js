@@ -664,12 +664,35 @@ async function updateFilter() {
         td.classList.add("p-2");
         let row = document.createElement('div');
         row.classList.add("row");
+        row.classList.add("video-row");
 
         let imgCol = document.createElement('div');
         imgCol.classList.add("text-center");
         imgCol.classList.add("col-sm-4");
         imgCol.classList.add("col-md-3");
         imgCol.classList.add("col-lg-2");
+
+        let imgA = document.createElement('a');
+        imgA.href = "#";
+        let videoUrl = videoStorageClientUrl + "/mp4/" + video.id + ".mp4";
+        imgA.setAttribute("onclick", `startVideo('${videoUrl}');`);
+        imgA.setAttribute("data-bs-toggle", "modal");
+        imgA.setAttribute("data-bs-target", "#videoModal");
+        imgCol.appendChild(imgA);
+
+        let pngEl = document.createElement('img');
+        pngEl.classList.add("png");
+        pngEl.loading = "lazy";
+        pngEl.src = videoStorageClientUrl + "/png/" + video.id + ".png";
+        pngEl.style = "width:128px;";
+        imgA.appendChild(pngEl);
+
+        let webpEl = document.createElement('img');
+        webpEl.classList.add("webp");
+        webpEl.loading = "lazy";
+        webpEl.src = videoStorageClientUrl + "/webp/" + video.id + ".webp";
+        webpEl.style = "width:128px;";
+        imgA.appendChild(webpEl);
 
         let textCol = document.createElement('div');
         textCol.classList.add("col-sm-8");
@@ -743,6 +766,57 @@ async function updateFilter() {
         videoTableBody.appendChild(tr);
     }
 }
+
+function startVideo(url) {
+    console.log("starting video ", url);
+    video.pause();
+    document.getElementById("videoSource").setAttribute("src", url);
+    video.load();
+    video.play();
+}
+
+document.getElementById("videoModal").addEventListener('hidden.bs.modal', (event) => {
+    document.getElementById("video").pause();
+});
+
+document.addEventListener('keydown', (ev) => {
+    if (!document.getElementById("videoModal").classList.contains("show")) {
+      return;
+    }
+
+    const video = document.getElementById('video')
+    switch (ev.key) {
+      case ",":
+        if (!video.paused) {
+          video.pause();
+        }
+        video.currentTime -= 1 / 60;
+        break;
+      case ".":
+        if (!video.paused) {
+          video.pause();
+        }
+        video.currentTime += 1 / 60;
+        break;
+      case " ":
+        if (video.paused) {
+          video.play();
+        } else {
+          video.pause();
+        }
+        break;
+      case "f":
+      case "F":
+        video.requestFullscreen();
+        break;
+      case "ArrowRight":
+        video.currentTime += 5;
+        break;
+      case "ArrowLeft":
+        video.currentTime -= 5;
+        break;
+    }
+});
 
 updateLogin();
 updateRoomOptions([document.getElementById("room"), document.getElementById("filterRoom")]);

@@ -10,7 +10,7 @@ askama = "0.12.1"
 env_logger = "0.11.5"
 clap = {version = "4.1.1", features=["derive", "env"]}
 git2 = "0.19.0"
-object_store = {version = "0.10.2", features=["gcp"]}
+object_store = {version = "0.10.2", features=["aws", "gcp"]}
 log = "0.4.17"
 glob = "0.3.1"
 serde = "1.0.204"
@@ -27,3 +27,4 @@ chrono = "0.4.38"
 futures = "0.3.30"
 lapin = "2.5.0"
 deadpool-lapin = "0.12.1"
+unix-named-pipe = "0.2.0"

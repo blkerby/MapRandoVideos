@@ -10,15 +10,13 @@ use askama::Template;
 use clap::Parser;
 use futures_util::StreamExt as _;
 use log::{error, info};
-use map_rando_videos::EncodingTask;
-use object_store::{
-    gcp::GoogleCloudStorageBuilder, local::LocalFileSystem, memory::InMemory, ObjectStore,
-};
+use map_rando_videos::{create_object_store, EncodingTask};
+use object_store::ObjectStore;
 use serde::{Deserialize, Serialize};
-use std::{path::Path, str::FromStr};
+use std::str::FromStr;
 use tokio::io::AsyncWriteExt as _;
-use tokio_postgres::types::ToSql;
 use tokio::join;
+use tokio_postgres::types::ToSql;
 
 #[derive(strum::EnumString)]
 enum Permission {
@@ -47,6 +45,8 @@ struct Args {
     #[arg(long, env)]
     video_storage_prefix: String,
     #[arg(long, env)]
+    video_storage_client_url: String,
+    #[arg(long, env)]
     xz_compression_level: i32,
 }
 
@@ -60,26 +60,7 @@ struct AppData {
 #[derive(Template)]
 #[template(path = "home.html")]
 struct HomeTemplate {
-    sm_json_data_summary_url: String,
-}
-
-pub fn create_object_store(url: &str) -> Box<dyn ObjectStore> {
-    let object_store: Box<dyn ObjectStore> = if url.starts_with("gs:") {
-        Box::new(
-            GoogleCloudStorageBuilder::from_env()
-                .with_url(url)
-                .build()
-                .unwrap(),
-        )
-    } else if url == "mem" {
-        Box::new(InMemory::new())
-    } else if url.starts_with("file:") {
-        let root = &url[5..];
-        Box::new(LocalFileSystem::new_with_prefix(Path::new(root)).unwrap())
-    } else {
-        panic!("Unsupported seed repository type: {}", url);
-    };
-    object_store
+    video_storage_client_url: String,
 }
 
 async fn build_app_data() -> AppData {
@@ -103,12 +84,21 @@ async fn build_app_data() -> AppData {
     // Create RabbitMQ connection pool
     let mut cfg = deadpool_lapin::Config::default();
     cfg.url = Some(args.rabbit_url.clone());
-    let mq_pool = cfg.create_pool(Some(deadpool_lapin::Runtime::Tokio1)).unwrap();
+    let mq_pool = cfg
+        .create_pool(Some(deadpool_lapin::Runtime::Tokio1))
+        .unwrap();
     let mq = mq_pool.get().await.unwrap();
     let channel = mq.create_channel().await.unwrap();
     let mut opts = lapin::options::QueueDeclareOptions::default();
     opts.durable = true;
-    channel.queue_declare(&args.rabbit_queue, opts, lapin::types::FieldTable::default()).await.unwrap();
+    channel
+        .queue_declare(
+            &args.rabbit_queue,
+            opts,
+            lapin::types::FieldTable::default(),
+        )
+        .await
+        .unwrap();
 
     // actix_web::rt::spawn
     AppData {
@@ -122,7 +112,7 @@ async fn build_app_data() -> AppData {
 #[get("/")]
 async fn home(app_data: web::Data<AppData>) -> impl Responder {
     let home_template = HomeTemplate {
-        sm_json_data_summary_url: app_data.args.sm_json_data_summary_url.clone(),
+        video_storage_client_url: app_data.args.video_storage_client_url.clone(),
     };
     HttpResponse::Ok().body(home_template.render().unwrap())
 }
@@ -194,6 +184,9 @@ async fn try_upload_video(
     while let Some(item) = gzip_payload.next().await {
         gz_dec.write(&item?).await?;
     }
+    gz_dec.shutdown().await?;
+    let mut xz_enc = gz_dec.into_inner();
+    xz_enc.shutdown().await?;
 
     let object_path = object_store::path::Path::parse(format!(
         "{}avi-xz/{}.avi.xz",
@@ -323,6 +316,7 @@ async fn try_submit_video(
     // Send messages to RabbitMQ to trigger processes to encode the thumbnail image, animated highlight, and full video.
     let mq = app_data.mq.get().await?;
     let channel = mq.create_channel().await?;
+    let props = lapin::BasicProperties::default().with_delivery_mode(2); // persistent delivery
 
     let thumbnail_task = EncodingTask::ThumbnailImage {
         video_id: req.video_id,
@@ -331,13 +325,15 @@ async fn try_submit_video(
         crop_size: req.crop_size,
         frame_number: req.thumbnail_t,
     };
-    channel.basic_publish(
-        "",
-        &app_data.args.rabbit_queue,
-        lapin::options::BasicPublishOptions::default(),
-        &serde_json::to_vec(&thumbnail_task)?,
-        lapin::BasicProperties::default(),
-    ).await?;
+    channel
+        .basic_publish(
+            "",
+            &app_data.args.rabbit_queue,
+            lapin::options::BasicPublishOptions::default(),
+            &serde_json::to_vec(&thumbnail_task)?,
+            props.clone(),
+        )
+        .await?;
 
     let highlight_task = EncodingTask::HighlightAnimation {
         video_id: req.video_id,
@@ -347,24 +343,28 @@ async fn try_submit_video(
         start_frame_number: req.highlight_start_t,
         end_frame_number: req.highlight_end_t,
     };
-    channel.basic_publish(
-        "",
-        &app_data.args.rabbit_queue,
-        lapin::options::BasicPublishOptions::default(),
-        &serde_json::to_vec(&highlight_task)?,
-        lapin::BasicProperties::default(),
-    ).await?;
+    channel
+        .basic_publish(
+            "",
+            &app_data.args.rabbit_queue,
+            lapin::options::BasicPublishOptions::default(),
+            &serde_json::to_vec(&highlight_task)?,
+            props.clone(),
+        )
+        .await?;
 
     let full_video_task = EncodingTask::FullVideo {
         video_id: req.video_id,
     };
-    channel.basic_publish(
-        "",
-        &app_data.args.rabbit_queue,
-        lapin::options::BasicPublishOptions::default(),
-        &serde_json::to_vec(&full_video_task)?,
-        lapin::BasicProperties::default(),
-    ).await?;
+    channel
+        .basic_publish(
+            "",
+            &app_data.args.rabbit_queue,
+            lapin::options::BasicPublishOptions::default(),
+            &serde_json::to_vec(&full_video_task)?,
+            props.clone(),
+        )
+        .await?;
 
     Ok(())
 }
@@ -448,7 +448,7 @@ enum VideoStatus {
     Approved,
     Supplemental,
     Incomplete,
-    Obsolete
+    Obsolete,
 }
 
 #[derive(Serialize)]
@@ -471,7 +471,7 @@ struct VideoListing {
 }
 
 async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<Vec<VideoListing>> {
-    let mut sql_parts = vec![];
+    let mut sql_parts: Vec<String> = vec![];
     sql_parts.push(format!(
         r#"
         SELECT 
@@ -498,8 +498,10 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
         "#
     ));
 
-    let mut sql_filters = vec![];
+    let mut sql_filters: Vec<String> = vec![];
     let mut param_values: Vec<&(dyn ToSql + Sync)> = vec![];
+
+    sql_filters.push("submitted_ts IS NOT NULL".to_string());
     if req.room_id.is_some() {
         sql_filters.push(format!("v.room_id = ${}", param_values.len() + 1));
         param_values.push(req.room_id.as_ref().unwrap());
@@ -517,7 +519,11 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
         param_values.push(req.strat_id.as_ref().unwrap());
     }
     if req.user_id.is_some() {
-        sql_filters.push(format!("(v.created_account_id = ${} OR v.updated_account_id = ${})", param_values.len() + 1, param_values.len() + 1));
+        sql_filters.push(format!(
+            "(v.created_account_id = ${} OR v.updated_account_id = ${})",
+            param_values.len() + 1,
+            param_values.len() + 1
+        ));
         param_values.push(req.user_id.as_ref().unwrap());
     }
     if sql_filters.len() > 0 {
@@ -575,7 +581,10 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
 }
 
 #[get("/list-videos")]
-async fn list_videos(req: web::Query<ListVideosRequest>, app_data: web::Data<AppData>) -> actix_web::Result<impl Responder> {
+async fn list_videos(
+    req: web::Query<ListVideosRequest>,
+    app_data: web::Data<AppData>,
+) -> actix_web::Result<impl Responder> {
     let out = try_list_videos(&req, &app_data)
         .await
         .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
@@ -584,7 +593,7 @@ async fn list_videos(req: web::Query<ListVideosRequest>, app_data: web::Data<App
 
 #[derive(Serialize)]
 struct AreaOveriew {
-    areas: Vec<AreaListing>
+    areas: Vec<AreaListing>,
 }
 
 #[derive(Serialize)]
@@ -596,18 +605,22 @@ struct AreaListing {
 #[derive(Serialize)]
 struct RoomListing {
     id: i32,
-    name: String
+    name: String,
 }
 
 async fn try_list_rooms_by_area(app_data: &AppData) -> Result<AreaOveriew> {
     let db = app_data.db.get().await?;
-    let stmt = db.prepare_cached("SELECT area_id, name FROM area ORDER BY area_id").await?;
+    let stmt = db
+        .prepare_cached("SELECT area_id, name FROM area ORDER BY area_id")
+        .await?;
     let area_fut = db.query(&stmt, &[]);
 
-    let stmt = db.prepare_cached("SELECT room_id, area_id, name FROM room").await?;
+    let stmt = db
+        .prepare_cached("SELECT room_id, area_id, name FROM room")
+        .await?;
     let room_fut = db.query(&stmt, &[]);
     let (area_result, room_result) = join!(area_fut, room_fut);
-    
+
     let mut areas: Vec<AreaListing> = vec![];
     for row in area_result? {
         let area_id: i32 = row.get(0);
@@ -615,18 +628,20 @@ async fn try_list_rooms_by_area(app_data: &AppData) -> Result<AreaOveriew> {
             bail!("Unexpected sequence of area IDs");
         }
         let name: String = row.get(1);
-        areas.push(AreaListing { name, rooms: vec![] });
+        areas.push(AreaListing {
+            name,
+            rooms: vec![],
+        });
     }
     for row in room_result? {
         let room_id: i32 = row.get(0);
         let area_id: i32 = row.get(1);
         let name: String = row.get(2);
-        areas[area_id as usize].rooms.push(RoomListing {
-            id: room_id,
-            name
-        });
+        areas[area_id as usize]
+            .rooms
+            .push(RoomListing { id: room_id, name });
     }
-    
+
     Ok(AreaOveriew { areas })
 }
 
@@ -651,19 +666,24 @@ struct NodeListing {
 
 async fn try_list_nodes(app_data: &AppData, query: &NodeListQuery) -> Result<Vec<NodeListing>> {
     let db = app_data.db.get().await?;
-    let stmt = db.prepare_cached("SELECT node_id, name FROM node WHERE room_id=$1 ORDER BY node_id").await?;
+    let stmt = db
+        .prepare_cached("SELECT node_id, name FROM node WHERE room_id=$1 ORDER BY node_id")
+        .await?;
     let node_rows = db.query(&stmt, &[&query.room_id]).await?;
     let mut node_listings: Vec<NodeListing> = vec![];
     for row in node_rows {
         let node_id: i32 = row.get(0);
         let name: String = row.get(1);
         node_listings.push(NodeListing { id: node_id, name });
-    }    
+    }
     Ok(node_listings)
 }
 
 #[get("/nodes")]
-async fn list_nodes(app_data: web::Data<AppData>, query: web::Query<NodeListQuery>) -> actix_web::Result<impl Responder> {
+async fn list_nodes(
+    app_data: web::Data<AppData>,
+    query: web::Query<NodeListQuery>,
+) -> actix_web::Result<impl Responder> {
     let v = try_list_nodes(&app_data, &query)
         .await
         .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
@@ -685,22 +705,34 @@ struct StratListing {
 
 async fn try_list_strats(app_data: &AppData, query: &StratListQuery) -> Result<Vec<StratListing>> {
     let db = app_data.db.get().await?;
-    let stmt = db.prepare_cached(r#"
+    let stmt = db
+        .prepare_cached(
+            r#"
       SELECT strat_id, name FROM strat 
       WHERE room_id=$1 AND from_node_id=$2 AND to_node_id=$3
-      ORDER BY strat_id"#).await?;
-    let strat_rows = db.query(&stmt, &[&query.room_id, &query.from_node_id, &query.to_node_id]).await?;
+      ORDER BY strat_id"#,
+        )
+        .await?;
+    let strat_rows = db
+        .query(
+            &stmt,
+            &[&query.room_id, &query.from_node_id, &query.to_node_id],
+        )
+        .await?;
     let mut strat_listings: Vec<StratListing> = vec![];
     for row in strat_rows {
         let strat_id: i32 = row.get(0);
         let name: String = row.get(1);
         strat_listings.push(StratListing { id: strat_id, name });
-    }    
+    }
     Ok(strat_listings)
 }
 
 #[get("/strats")]
-async fn list_strats(app_data: web::Data<AppData>, query: web::Query<StratListQuery>) -> actix_web::Result<impl Responder> {
+async fn list_strats(
+    app_data: web::Data<AppData>,
+    query: web::Query<StratListQuery>,
+) -> actix_web::Result<impl Responder> {
     let v = try_list_strats(&app_data, &query)
         .await
         .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
