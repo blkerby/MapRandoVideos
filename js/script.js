@@ -619,6 +619,7 @@ async function updateFilter() {
     let req = {};
     if (room != "") {
         req.room_id = parseInt(room);
+        filterVideoId = null;
     }
     if (fromNode != "") {
         req.from_node_id = parseInt(fromNode);
@@ -631,6 +632,10 @@ async function updateFilter() {
     }
     if (user != "") {
         req.user_id = parseInt(user);
+        filterVideoId = null;
+    }
+    if (filterVideoId !== null) {
+        req.video_id = filterVideoId;
     }
     req.sort_by = "SubmittedTimestamp";
     req.limit = 10;
@@ -648,14 +653,12 @@ async function updateFilter() {
     videoTableBody.innerHTML = "";
       
     let dateFormat = new Intl.DateTimeFormat(undefined, {
-        weekday: 'short',
         year: 'numeric',
         month: 'short',
         day: 'numeric',
         hour12: 'false',
         hour: 'numeric',
         minute: '2-digit',
-        second: '2-digit',
         timeZoneName: 'short',
     });
     for (const video of videoList) {
@@ -695,9 +698,9 @@ async function updateFilter() {
         imgA.appendChild(webpEl);
 
         let textCol = document.createElement('div');
-        textCol.classList.add("col-sm-8");
-        textCol.classList.add("col-md-9");
-        textCol.classList.add("col-lg-10");
+        textCol.classList.add("col-sm-6");
+        textCol.classList.add("col-md-7");
+        textCol.classList.add("col-lg-8");
 
         let pSubmitted = document.createElement('p');
         pSubmitted.classList.add("m-0");
@@ -747,11 +750,6 @@ async function updateFilter() {
             textCol.appendChild(pStrat);    
         }
 
-        let pStatus = document.createElement('p');
-        pStatus.classList.add("m-0");
-        pStatus.innerText = `Status: ${video.status}`;
-        textCol.appendChild(pStatus);
-
         if (video.note !== "") {
             let pNote = document.createElement('p');
             pNote.classList.add("m-0");
@@ -759,12 +757,39 @@ async function updateFilter() {
             textCol.appendChild(pNote);    
         }
 
+        let shareCol = document.createElement('div');
+        shareCol.classList.add("col-sm-2");
+        shareCol.classList.add("text-end");
+
+        let shareButton = document.createElement('button');
+        shareButton.classList.add("btn");
+        shareButton.classList.add("btn-secondary");
+        shareButton.setAttribute("onclick", `shareVideoLink(this, ${video.id})`);
+        shareButton.innerHTML = '<i class="bi bi-clipboard"></i> Share';
+        shareCol.appendChild(shareButton);
+
+        let pStatus = document.createElement('p');
+        pStatus.classList.add("m-0");
+        pStatus.innerText = `Status: ${video.status}`;
+        shareCol.appendChild(pStatus);
+
         row.appendChild(imgCol);
         row.appendChild(textCol);
+        row.appendChild(shareCol);
         td.appendChild(row);
         tr.appendChild(td);
         videoTableBody.appendChild(tr);
     }
+}
+
+function shareVideoLink(el, id) {
+    oldHTML = el.innerHTML
+    el.innerHTML = '<i class="bi bi-clipboard"></i> Copied';
+    let link = window.location.origin + "?video_id=" + id;
+    navigator.clipboard.writeText(link);
+    setTimeout(function(){
+        el.innerHTML = oldHTML;
+    }, 2000);
 }
 
 function startVideo(url) {

@@ -61,6 +61,7 @@ struct AppData {
 #[template(path = "home.html")]
 struct HomeTemplate {
     video_storage_client_url: String,
+    video_id: Option<i32>,
 }
 
 async fn build_app_data() -> AppData {
@@ -109,10 +110,16 @@ async fn build_app_data() -> AppData {
     }
 }
 
+#[derive(Deserialize)]
+struct HomeQuery {
+    video_id: Option<i32>,
+}
+
 #[get("/")]
-async fn home(app_data: web::Data<AppData>) -> impl Responder {
+async fn home(app_data: web::Data<AppData>, query: web::Query<HomeQuery>) -> impl Responder {
     let home_template = HomeTemplate {
         video_storage_client_url: app_data.args.video_storage_client_url.clone(),
+        video_id: query.video_id,
     };
     HttpResponse::Ok().body(home_template.render().unwrap())
 }
@@ -436,6 +443,7 @@ struct ListVideosRequest {
     to_node_id: Option<i32>,
     strat_id: Option<i32>,
     user_id: Option<i32>,
+    video_id: Option<i32>,
     sort_by: ListVideosSortBy,
     limit: Option<i64>,
     offset: Option<i64>,
@@ -517,6 +525,10 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
     if req.strat_id.is_some() {
         sql_filters.push(format!("v.strat_id = ${}", param_values.len() + 1));
         param_values.push(req.strat_id.as_ref().unwrap());
+    }
+    if req.video_id.is_some() {
+        sql_filters.push(format!("v.id = ${}", param_values.len() + 1));
+        param_values.push(req.video_id.as_ref().unwrap());        
     }
     if req.user_id.is_some() {
         sql_filters.push(format!(
