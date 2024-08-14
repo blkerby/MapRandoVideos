@@ -764,9 +764,20 @@ async function updateFilter() {
         let shareButton = document.createElement('button');
         shareButton.classList.add("btn");
         shareButton.classList.add("btn-secondary");
+        shareButton.classList.add("my-1")
         shareButton.setAttribute("onclick", `shareVideoLink(this, ${video.id})`);
         shareButton.innerHTML = '<i class="bi bi-clipboard"></i> Share';
         shareCol.appendChild(shareButton);
+
+        let editButton = document.createElement('button');
+        editButton.classList.add("btn");
+        editButton.classList.add("btn-success");
+        editButton.classList.add("my-1")
+        editButton.setAttribute("onclick", `openEditVideo(${video.id})`);
+        // editButton.setAttribute("data-bs-toggle", "modal");
+        // editButton.setAttribute("data-bs-target", "#editModal");
+        editButton.innerHTML = '<i class="bi bi-pencil"></i> Edit';
+        shareCol.appendChild(editButton);
 
         let pStatus = document.createElement('p');
         pStatus.classList.add("m-0");
@@ -782,14 +793,68 @@ async function updateFilter() {
     }
 }
 
+async function editShowPreview(video_id) {
+
+}
+
 function shareVideoLink(el, id) {
-    oldHTML = el.innerHTML
-    el.innerHTML = '<i class="bi bi-clipboard"></i> Copied';
+    let oldHTML = el.innerHTML;
+    el.innerHTML = '<i class="bi bi-check2"></i> Copied';
     let link = window.location.origin + "?video_id=" + id;
     navigator.clipboard.writeText(link);
     setTimeout(function(){
         el.innerHTML = oldHTML;
     }, 2000);
+}
+
+async function openEditVideo(videoId) {
+    let videoResponse = await fetch(`/get-video?video_id=${videoId}`);
+    if (!videoResponse.ok) {
+        console.log("Error getting video " + videoId);
+        return;
+    }
+    let video = await videoResponse.json();
+
+    let room = document.getElementById("editRoom");
+    room.value = video.room_id;
+    await updateNodeOptions('editRoom', 'editFromNode', 'editToNode', 'editStrat');
+
+    let fromNode = document.getElementById("editFromNode");
+    fromNode.value = video.from_node_id;
+    
+    let toNode = document.getElementById("editToNode");
+    toNode.value = video.to_node_id;
+
+    await updateStratOptions('editRoom', 'editStrat', 'editFromNode', 'editToNode');
+    let strat = document.getElementById("editStrat");
+    strat.value = video.strat_id;
+
+    let note = document.getElementById("editNote");
+    note.value = video.note;
+
+    let cropSize = document.getElementById("editCropSize");
+    cropSize.value = video.crop_size;
+
+    let cropCenterX = document.getElementById("editCropCenterX");
+    cropCenterX.value = video.crop_center_x;
+
+    let cropCenterY = document.getElementById("editCropCenterY");
+    cropCenterY.value = video.crop_center_y;
+
+    let thumbnailT = document.getElementById("editThumbnailTime");
+    thumbnailT.value = video.thumbnail_t;
+
+    let highlightStartT = document.getElementById("editHighlightStartTime");
+    highlightStartT.value = video.highlight_start_t;
+
+    let highlightEndT = document.getElementById("editHighlightEndTime");
+    highlightEndT.value = video.highlight_end_t;
+
+    let status = document.getElementById("editStatus");
+    status.value = video.status;
+
+    let editModal = new bootstrap.Modal(document.getElementById("editModal"));
+    editModal.show();
 }
 
 function startVideo(url) {
@@ -844,7 +909,7 @@ document.addEventListener('keydown', (ev) => {
 });
 
 updateLogin();
-updateRoomOptions([document.getElementById("room"), document.getElementById("filterRoom")]);
+updateRoomOptions([document.getElementById("room"), document.getElementById("filterRoom"), document.getElementById("editRoom")]);
 updateFile();
 animateLoop();
 updateUserList();

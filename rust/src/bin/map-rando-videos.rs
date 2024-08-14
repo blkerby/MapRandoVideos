@@ -62,6 +62,7 @@ struct AppData {
 struct HomeTemplate {
     video_storage_client_url: String,
     video_id: Option<i32>,
+    video_statuses: Vec<String>,
 }
 
 async fn build_app_data() -> AppData {
@@ -120,6 +121,13 @@ async fn home(app_data: web::Data<AppData>, query: web::Query<HomeQuery>) -> imp
     let home_template = HomeTemplate {
         video_storage_client_url: app_data.args.video_storage_client_url.clone(),
         video_id: query.video_id,
+        video_statuses: vec![
+            "New",  // TODO: Get rid of this one
+            "Incomplete",
+            "Complete",
+            "Approved",
+            "Archived",
+        ].into_iter().map(|x| x.to_string()).collect(),
     };
     HttpResponse::Ok().body(home_template.render().unwrap())
 }
@@ -528,7 +536,7 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
     }
     if req.video_id.is_some() {
         sql_filters.push(format!("v.id = ${}", param_values.len() + 1));
-        param_values.push(req.video_id.as_ref().unwrap());        
+        param_values.push(req.video_id.as_ref().unwrap());
     }
     if req.user_id.is_some() {
         sql_filters.push(format!(
@@ -601,6 +609,78 @@ async fn list_videos(
         .await
         .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
     Ok(web::Json(out))
+}
+
+#[derive(Deserialize)]
+struct GetVideoRequest {
+    video_id: i32,
+}
+
+#[derive(Serialize)]
+struct GetVideoResponse {
+    room_id: Option<i32>,
+    from_node_id: Option<i32>,
+    to_node_id: Option<i32>,
+    strat_id: Option<i32>,
+    note: String,
+    crop_size: i32,
+    crop_center_x: i32,
+    crop_center_y: i32,
+    thumbnail_t: i32,
+    highlight_start_t: i32,
+    highlight_end_t: i32,
+    status: VideoStatus,
+}
+
+#[get("/get-video")]
+async fn get_video(
+    req: web::Query<GetVideoRequest>,
+    app_data: web::Data<AppData>,
+) -> actix_web::Result<impl Responder> {
+    let sql = r#"
+        SELECT 
+            room_id,
+            from_node_id,
+            to_node_id,
+            strat_id,
+            note,
+            crop_size,
+            crop_center_x,
+            crop_center_y,
+            thumbnail_t,
+            highlight_start_t,
+            highlight_end_t,
+            status
+        FROM video
+        WHERE id = $1
+    "#;
+    let db =
+        app_data.db.get().await.map_err(|e| {
+            actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+    let stmt = db.prepare_cached(&sql).await.map_err(|e| {
+        actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR)
+    })?;
+    let row = db.query_one(&stmt, &[&req.video_id]).await.map_err(|e| {
+        actix_web::error::InternalError::new(e, StatusCode::NOT_FOUND)
+    })?;
+
+    let status_str: String = row.get("status");
+    let response = GetVideoResponse {
+        room_id: row.get("room_id"),
+        from_node_id: row.get("from_node_id"),
+        to_node_id: row.get("to_node_id"),
+        strat_id: row.get("strat_id"),
+        note: row.get("note"),
+        status: VideoStatus::try_from(status_str.as_str()).unwrap(),
+        crop_size: row.get("crop_size"),
+        crop_center_x: row.get("crop_center_x"),
+        crop_center_y: row.get("crop_center_x"),
+        thumbnail_t: row.get("thumbnail_t"),
+        highlight_start_t: row.get("highlight_start_t"),
+        highlight_end_t: row.get("highlight_end_t"),
+    };
+    Ok(web::Json(response))
 }
 
 #[derive(Serialize)]
@@ -773,6 +853,7 @@ async fn main() {
             .service(list_rooms_by_area)
             .service(list_nodes)
             .service(list_strats)
+            .service(get_video)
             .service(actix_files::Files::new("/js", "../js"))
             .service(actix_files::Files::new("/static", "static"))
     })

@@ -1,0 +1,154 @@
+<div class="modal" id="editModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5">Edit Video</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="editForm" class="needs-validation">
+                <div class="modal-body">
+                    <div class="row my-2">
+                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                            <label for="editRoom" class="col-form-label">Room</label>
+                        </div>
+                        <div class="col-lg-11 col-sm-10">
+                            <select id="editRoom" class="form-select" onchange="updateNodeOptions('editRoom', 'editFromNode', 'editToNode', 'editStrat')" autocomplete="off">
+                                <option value="">Select a room</option>
+                            </select>    
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                            <label for="editFromNode" class="col-form-label">From</label>
+                        </div>
+                        <div class="col-lg-11 col-sm-10">
+                            <select id="editFromNode" class="form-select" onchange="updateStratOptions('editRoom', 'editStrat', 'editFromNode', 'editToNode')" autocomplete="off">
+                                <option value="">Select "from" node</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                            <label for="editToNode" class="col-form-label">To</label>
+                        </div>
+                        <div class="col-lg-11 col-sm-10">
+                            <select id="editToNode" class="form-select" onchange="updateStratOptions('editRoom', 'editStrat', 'editFromNode', 'editToNode')" autocomplete="off">
+                                <option value="">Select "to" node</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                            <label for="editStrat" class="col-form-label">Strat</label>
+                        </div>
+                        <div class="col-lg-11 col-sm-10">
+                            <select id="editStrat" class="form-select" autocomplete="off">
+                                <option value="">Select strat</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                            <label for="editNote" class="col-form-label">Note</label>
+                        </div>
+                        <div class="col-lg-11 col-sm-10">
+                            <textarea id="editNote" class="form-control" maxlength=8000 autocomplete="off"></textarea>
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-4">
+                            <div class="row">
+                                <div class="col-lg-6 text-lg-end">
+                                    <label for="editCropSize" class="col-form-label">Crop size</label>
+                                </div>
+                                <div class="col-lg-6">
+                                    <input id="editCropSize" type="number" class="form-control" value="" min="64" max="224" onchange="updateControls()" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>                        
+                        <div class="col-4">
+                            <div class="row">
+                                <div class="col-lg-6 text-lg-end">
+                                    <label for="editCropCenterX" class="col-form-label">Crop center X</label>
+                                </div>
+                                <div class="col-lg-6">
+                                    <input id="editCropCenterX" type="number" class="form-control" value="" onchange="updateControls()" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="row">
+                                <div class="col-lg-6 text-lg-end">
+                                    <label for="editCropCenterY" class="col-form-label">Crop center Y</label>
+                                </div>
+                                <div class="col-lg-6">
+                                    <input id="editCropCenterY" type="number" class="form-control" value="" onchange="updateControls()" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-4">
+                            <div class="row">
+                                <div class="col-lg-6 text-lg-end">
+                                    <label for="editThumbnailTime" class="col-form-label">Static time</label>
+                                </div>
+                                <div class="col-lg-6">
+                                    <input id="editThumbnailTime" type="number" class="form-control" min="0" onchange="updateControls()" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>                        
+                        <div class="col-4">
+                            <div class="row">
+                                <div class="col-lg-6 text-lg-end">
+                                    <label for="editHighlightStartTime" class="col-form-label">Animate start</label>
+                                </div>
+                                <div class="col-lg-6">
+                                    <input id="editHighlightStartTime" type="number" class="form-control" min="0" onchange="updateControls()" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>                        
+                        <div class="col-4">
+                            <div class="row">
+                                <div class="col-lg-6 text-lg-end">
+                                    <label for="editHighlightEndTime" class="col-form-label">Animate end</label>
+                                </div>
+                                <div class="col-lg-6">
+                                    <input id="editHighlightEndTime" type="number" class="form-control" min="0" onchange="updateControls()" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>                        
+                    </div>
+                    <div class="text-center mt-2">
+                        <button type="button" class="btn btn-secondary" onclick="editShowPreview()">Show preview</button>
+                    </div>
+                    <div class="row my-2 d-none" onmouseenter="enableAnimation()" onmouseleave="disableAnimation()">
+                        <div class="col-4 d-flex align-items-center justify-content-center">
+                            <canvas id="editThumbnail" class="d-none" width="224" height="224" style="height:128px"></canvas>
+                        </div>                        
+                        <div class="col-4 d-flex align-items-center justify-content-center">
+                            <canvas id="editHighlightStart" class="d-none" width="224" height="224" style="height:128px"></canvas>
+                        </div>                        
+                        <div class="col-4 d-flex align-items-center justify-content-center">
+                            <canvas id="editHighlightEnd" class="d-none" width="224" height="224" style="height:128px"></canvas>
+                        </div>                        
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-4">
+                            <label for="editStatus" class="form-label">Status</label>
+                            <select id="editStatus" class="form-select" autocomplete="off">
+                                {% for s in video_statuses %}
+                                <option value="{{ s }}">{{ s }}</option>
+                                {% endfor %}
+                            </select>    
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="button" class="btn btn-primary" value="Save Changes" onclick="submitEditVideo()">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
