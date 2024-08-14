@@ -1,4 +1,5 @@
 // TODO: Split this up to make it more manageable.
+// It would probably be better to separate the HTML-serving API form the backend endpoints.
 // Maybe use some kind of modern framework and make it less of a mess?
 var frameOffsets = null;
 var animationEnabled = false;
@@ -596,7 +597,7 @@ loginModal.addEventListener('show.bs.modal', function (event) {
 async function updateUserList() {
     let response = await fetch("/list-users");
     if (!response.ok) {
-        console.log("Error fetching user list: " + response.text());
+        console.log("Error fetching user list: " + await response.text());
         return;
     }
     let userList = await response.json();
@@ -877,7 +878,16 @@ async function openEditVideo(id) {
 
     let status = document.getElementById("editStatus");
     status.value = video.status;
+    updateEditStatus();
 
+    var form = document.getElementById("editForm");
+    form.classList.remove('was-validated');
+
+    if (video.permanent) {
+        document.getElementById("deleteVideoButton").classList.add("d-none");
+    } else {
+        document.getElementById("deleteVideoButton").classList.remove("d-none");
+    }
     let editModal = new bootstrap.Modal(document.getElementById("editModal"));
     editModal.show();
 }
@@ -888,6 +898,14 @@ async function submitEditVideo() {
     }
     submitting = true;
     let editModal = bootstrap.Modal.getInstance(document.getElementById("editModal"));
+
+    var form = document.getElementById("editForm");
+    if (!form.checkValidity()) {
+        console.log("invalid edit form");
+        form.classList.add('was-validated');
+        submitting = false;
+        return;
+    }
 
     let req = {
         video_id: videoId,
@@ -930,6 +948,43 @@ async function submitEditVideo() {
     }
 }
 
+function updateEditStatus() {
+    let status = document.getElementById("editStatus").value;
+    let room = document.getElementById("editRoom");
+    let fromNode = document.getElementById("editFromNode");
+    let toNode = document.getElementById("editToNode");
+    let strat = document.getElementById("editStrat");
+    if (status == 'Complete' || status == 'Approved') {
+        room.required = true;
+        fromNode.required = true;
+        toNode.required = true;
+        strat.required = true;
+    } else {
+        room.required = false;
+        fromNode.required = false;
+        toNode.required = false;
+        strat.required = false;
+    }
+    var form = document.getElementById("editForm");
+    form.classList.remove('was-validated');
+}
+
+async function deleteVideo() {
+    let editModal = bootstrap.Modal.getInstance(document.getElementById("editModal"));
+    let response = await fetch(`/?video_id=${videoId}`, {
+        "method": "DELETE"
+    });
+    if (response.ok) {
+        console.log(`Successfully deleted video: video_id=${videoId}`);
+        editModal.hide();
+        updateFilter();
+    } else {
+        console.log(`Error deleting video ${videoId}: ${await response.text()}`);
+        editModal.show();        
+    }
+    
+}
+
 function startVideo(url) {
     console.log("starting video ", url);
     video.pause();
@@ -940,6 +995,11 @@ function startVideo(url) {
 
 document.getElementById("videoModal").addEventListener('hidden.bs.modal', (event) => {
     document.getElementById("video").pause();
+});
+
+document.getElementById("deleteModal").addEventListener('hidden.bs.modal', (event) => {
+    let editModal = bootstrap.Modal.getInstance(document.getElementById("editModal"));
+    editModal.show();
 });
 
 document.addEventListener('keydown', (ev) => {

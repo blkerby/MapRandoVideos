@@ -1,5 +1,5 @@
 use actix_web::{
-    self, get,
+    self, delete, get,
     http::StatusCode,
     middleware::{Compress, Logger},
     post, web, App, HttpResponse, HttpServer, Responder,
@@ -586,6 +586,73 @@ async fn edit_video(
     HttpResponse::Ok().body("")
 }
 
+#[derive(Deserialize)]
+struct DeleteVideoRequest {
+    video_id: i32,
+}
+
+#[delete("/")]
+async fn delete_video(
+    req: web::Query<DeleteVideoRequest>,
+    app_data: web::Data<AppData>,
+    auth: BasicAuth,
+) -> actix_web::Result<impl Responder> {
+    let account_info = match authenticate(app_data.clone(), &auth).await {
+        Ok(ai) => ai,
+        Err(e) => {
+            error!("Failed authentication: {}", e);
+            return Err(actix_web::error::ErrorUnauthorized("Authentication failed"));
+        }
+    };
+
+    // Check that the user is authorized to delete this video:
+    let db_client = app_data.db.get().await.unwrap();
+    let sql = "SELECT updated_account_id, permanent FROM video WHERE id=$1";
+    let stmt = db_client.prepare_cached(&sql).await.unwrap();
+    let row = db_client
+        .query_one(&stmt, &[&req.video_id])
+        .await
+        .map_err(|e| actix_web::error::ErrorNotFound(e))?;
+    let updated_account_id: i32 = row.get(0);
+    let permanent: bool = row.get(1);
+    if permanent {
+        return Err(actix_web::error::ErrorForbidden(
+            "video is permanent and may not be deleted",
+        ));
+    }
+    match account_info.permission {
+        Permission::Editor => {
+            // Editors are authorized to delete any non-permanent video, so no check needed.
+        }
+        Permission::Default => {
+            // Other users are only authorized to delete their own videos.
+            if updated_account_id != account_info.id {
+                return Err(actix_web::error::ErrorForbidden(
+                    "not permitted to delete this video",
+                ));
+            }
+        }
+    }
+
+    let sql = "DELETE FROM video WHERE id=$1";
+    let stmt = db_client
+        .prepare_cached(&sql)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    let cnt = db_client
+        .execute(&stmt, &[&req.video_id])
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    if cnt != 1 {
+        return Err(actix_web::error::ErrorInternalServerError(format!(
+            "Unexpected deleted row count: {}",
+            cnt
+        )));
+    }
+
+    Ok(HttpResponse::Ok().body(""))
+}
+
 #[derive(Serialize)]
 struct UserListing {
     id: i32,
@@ -813,6 +880,7 @@ struct GetVideoResponse {
     highlight_start_t: i32,
     highlight_end_t: i32,
     status: VideoStatus,
+    permanent: bool,
 }
 
 #[get("/get-video")]
@@ -833,7 +901,8 @@ async fn get_video(
             thumbnail_t,
             highlight_start_t,
             highlight_end_t,
-            status
+            status,
+            permanent
         FROM video
         WHERE id = $1
     "#;
@@ -864,6 +933,7 @@ async fn get_video(
         thumbnail_t: row.get("thumbnail_t"),
         highlight_start_t: row.get("highlight_start_t"),
         highlight_end_t: row.get("highlight_end_t"),
+        permanent: row.get("permanent"),
     };
     Ok(web::Json(response))
 }
@@ -1040,6 +1110,7 @@ async fn main() {
             .service(list_strats)
             .service(get_video)
             .service(edit_video)
+            .service(delete_video)
             .service(actix_files::Files::new("/js", "../js"))
             .service(actix_files::Files::new("/css", "../css"))
             .service(actix_files::Files::new("/static", "static"))
