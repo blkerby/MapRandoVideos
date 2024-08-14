@@ -409,6 +409,160 @@ async fn submit_video(
     HttpResponse::Ok().body("")
 }
 
+#[derive(Deserialize, Debug)]
+struct EditVideoRequest {
+    video_id: i32,
+    room_id: Option<i32>,
+    from_node_id: Option<i32>,
+    to_node_id: Option<i32>,
+    strat_id: Option<i32>,
+    note: String,
+    crop_size: i32,
+    crop_center_x: i32,
+    crop_center_y: i32,
+    thumbnail_t: i32,
+    highlight_start_t: i32,
+    highlight_end_t: i32,
+    status: VideoStatus,
+}
+
+async fn try_edit_video(
+    req_json: web::Bytes,
+    app_data: web::Data<AppData>,
+    account_info: &AccountInfo,
+) -> Result<()> {
+    info!("edit_video: {}", std::str::from_utf8(&req_json)?);
+    let req: EditVideoRequest = serde_json::from_slice(&req_json)?;
+
+    let db_client = app_data.db.get().await.unwrap();
+    match account_info.permission {
+        Permission::Editor => {
+            // Editors are authorized to edit any video, so no check needed.
+        },
+        Permission::Default => {
+            let sql = "SELECT updated_account_id FROM video WHERE id=$1";
+            let stmt = db_client.prepare_cached(&sql).await?;
+            let row = db_client.query_one(&stmt, &[&req.video_id]).await?;
+            let updated_account_id: i32 = row.get(0);
+            if updated_account_id != account_info.id {
+                // It would be more "correct" to return 403 here (and 404 in case the row doesn't exist).
+                bail!("Not authorized to edit this video");
+            }
+        }
+    }
+
+    let sql = r#"
+        UPDATE video
+        SET updated_account_id=$2,
+            updated_ts=current_timestamp,
+            status=$3,
+            room_id=$4,
+            from_node_id=$5,
+            to_node_id=$6,
+            strat_id=$7,
+            note=$8,
+            crop_size=$9,
+            crop_center_x=$10,
+            crop_center_y=$11,
+            thumbnail_t=$12,
+            highlight_start_t=$13,
+            highlight_end_t=$14
+        WHERE id=$1
+    "#;
+    let stmt = db_client.prepare_cached(sql).await?;
+    let status_str: String = format!("{:?}", req.status);
+    let _ = db_client
+        .execute(
+            &stmt,
+            &[
+                &req.video_id,
+                &account_info.id,
+                &status_str,
+                &req.room_id,
+                &req.from_node_id,
+                &req.to_node_id,
+                &req.strat_id,
+                &req.note,
+                &req.crop_size,
+                &req.crop_center_x,
+                &req.crop_center_y,
+                &req.thumbnail_t,
+                &req.highlight_start_t,
+                &req.highlight_end_t,
+            ],
+        )
+        .await?;
+    info!("Edited video");
+
+    // Send messages to RabbitMQ to trigger processes to encode the thumbnail image and animated highlight.
+    // The full video cannot change, so no need to encode it again. We could optimize this by checking if
+    // thumbnail and/or highlight actually need to be recomputed, but it's cheap so we don't bother for now.
+    let mq = app_data.mq.get().await?;
+    let channel = mq.create_channel().await?;
+    let props = lapin::BasicProperties::default().with_delivery_mode(2); // persistent delivery
+
+    let thumbnail_task = EncodingTask::ThumbnailImage {
+        video_id: req.video_id,
+        crop_center_x: req.crop_center_x,
+        crop_center_y: req.crop_center_y,
+        crop_size: req.crop_size,
+        frame_number: req.thumbnail_t,
+    };
+    channel
+        .basic_publish(
+            "",
+            &app_data.args.rabbit_queue,
+            lapin::options::BasicPublishOptions::default(),
+            &serde_json::to_vec(&thumbnail_task)?,
+            props.clone(),
+        )
+        .await?;
+
+    let highlight_task = EncodingTask::HighlightAnimation {
+        video_id: req.video_id,
+        crop_center_x: req.crop_center_x,
+        crop_center_y: req.crop_center_y,
+        crop_size: req.crop_size,
+        start_frame_number: req.highlight_start_t,
+        end_frame_number: req.highlight_end_t,
+    };
+    channel
+        .basic_publish(
+            "",
+            &app_data.args.rabbit_queue,
+            lapin::options::BasicPublishOptions::default(),
+            &serde_json::to_vec(&highlight_task)?,
+            props.clone(),
+        )
+        .await?;
+    Ok(())
+}
+
+#[post("/edit-video")]
+async fn edit_video(
+    req_json: web::Bytes,
+    app_data: web::Data<AppData>,
+    auth: BasicAuth,
+) -> impl Responder {
+    let account_info = match authenticate(app_data.clone(), &auth).await {
+        Ok(ai) => ai,
+        Err(e) => {
+            error!("Failed authentication: {}", e);
+            return HttpResponse::Unauthorized().body("Unauthorized");
+        }
+    };
+
+    match try_edit_video(req_json, app_data.clone(), &account_info).await {
+        Ok(_) => {}
+        Err(e) => {
+            error!("Failed to edit video: {}", e);
+            return HttpResponse::InternalServerError().body("Failed to edit video");
+        }
+    }
+
+    HttpResponse::Ok().body("")
+}
+
 #[derive(Serialize)]
 struct UserListing {
     id: i32,
@@ -457,14 +611,14 @@ struct ListVideosRequest {
     offset: Option<i64>,
 }
 
-#[derive(Serialize, Deserialize, strum::EnumString)]
+#[derive(Serialize, Deserialize, strum::EnumString, Debug)]
 enum VideoStatus {
     Pending,
     New,
-    Approved,
-    Supplemental,
     Incomplete,
-    Obsolete,
+    Complete,
+    Approved,
+    Archived,
 }
 
 #[derive(Serialize)]
@@ -854,6 +1008,7 @@ async fn main() {
             .service(list_nodes)
             .service(list_strats)
             .service(get_video)
+            .service(edit_video)
             .service(actix_files::Files::new("/js", "../js"))
             .service(actix_files::Files::new("/static", "static"))
     })

@@ -807,12 +807,13 @@ function shareVideoLink(el, id) {
     }, 2000);
 }
 
-async function openEditVideo(videoId) {
-    let videoResponse = await fetch(`/get-video?video_id=${videoId}`);
+async function openEditVideo(id) {
+    let videoResponse = await fetch(`/get-video?video_id=${id}`);
     if (!videoResponse.ok) {
-        console.log("Error getting video " + videoId);
+        console.log("Error getting video " + id);
         return;
     }
+    videoId = id;
     let video = await videoResponse.json();
 
     let room = document.getElementById("editRoom");
@@ -855,6 +856,54 @@ async function openEditVideo(videoId) {
 
     let editModal = new bootstrap.Modal(document.getElementById("editModal"));
     editModal.show();
+}
+
+async function submitEditVideo() {
+    if (submitting) {
+        return;
+    }
+    submitting = true;
+    let editModal = bootstrap.Modal.getInstance(document.getElementById("editModal"));
+
+    let req = {
+        video_id: videoId,
+        status: document.getElementById("editStatus").value,
+        room_id: tryParseInt(document.getElementById("editRoom").value),
+        from_node_id: tryParseInt(document.getElementById("editFromNode").value),
+        to_node_id: tryParseInt(document.getElementById("editToNode").value),
+        strat_id: tryParseInt(document.getElementById("editStrat").value),
+        note: document.getElementById("editNote").value,
+        crop_size: tryParseInt(document.getElementById("editCropSize").value),
+        crop_center_x: tryParseInt(document.getElementById("editCropCenterX").value),
+        crop_center_y: tryParseInt(document.getElementById("editCropCenterY").value),
+        thumbnail_t: tryParseInt(document.getElementById("editThumbnailTime").value),
+        highlight_start_t: tryParseInt(document.getElementById("editHighlightStartTime").value),
+        highlight_end_t: tryParseInt(document.getElementById("editHighlightEndTime").value),
+    };
+    var json = JSON.stringify(req);
+
+    let username = localStorage.getItem("username");
+    let token = localStorage.getItem("token");
+
+    var result = await fetch("/edit-video", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": 'Basic ' + btoa(username + ":" + token),
+        },
+        body: json
+    });
+    submitting = false;
+    editModal.hide();
+    if (result.ok) {
+        console.log("Successfully edited video");
+        frameOffsets = null;
+        document.getElementById("videoFile").value = null;
+        updateFilter();
+    } else {
+        resultText = await result.text();
+        console.log(`Failed to edit video: ${resultText}`);
+    }
 }
 
 function startVideo(url) {
