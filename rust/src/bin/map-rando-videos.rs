@@ -12,8 +12,8 @@ use futures_util::StreamExt as _;
 use log::{error, info};
 use map_rando_videos::{create_object_store, EncodingTask};
 use object_store::ObjectStore;
-use serde::{de::{self, IntoDeserializer}, Deserialize, Serialize};
-use std::{fmt, str::FromStr};
+use serde::{Deserialize, Serialize};
+use std::str::FromStr as _;
 use tokio::io::AsyncWriteExt as _;
 use tokio::join;
 use tokio_postgres::types::ToSql;
@@ -121,13 +121,10 @@ async fn home(app_data: web::Data<AppData>, query: web::Query<HomeQuery>) -> imp
     let home_template = HomeTemplate {
         video_storage_client_url: app_data.args.video_storage_client_url.clone(),
         video_id: query.video_id,
-        video_statuses: vec![
-            "New",  // TODO: Get rid of this one
-            "Incomplete",
-            "Complete",
-            "Approved",
-            "Archived",
-        ].into_iter().map(|x| x.to_string()).collect(),
+        video_statuses: vec!["Incomplete", "Complete", "Approved", "Disabled"]
+            .into_iter()
+            .map(|x| x.to_string())
+            .collect(),
     };
     HttpResponse::Ok().body(home_template.render().unwrap())
 }
@@ -169,7 +166,10 @@ struct SignInResponse {
 }
 
 #[get("/sign-in")]
-async fn sign_in(app_data: web::Data<AppData>, auth: BasicAuth) -> actix_web::Result<impl Responder> {
+async fn sign_in(
+    app_data: web::Data<AppData>,
+    auth: BasicAuth,
+) -> actix_web::Result<impl Responder> {
     match authenticate(app_data.clone(), &auth).await {
         Ok(account_info) => {
             let response = SignInResponse {
@@ -298,10 +298,20 @@ async fn try_submit_video(
     if !req.copyright_waiver {
         bail!("copyright_waiver not checked");
     }
+    let status: &'static str;
+    if req.room_id.is_some()
+        && req.from_node_id.is_some()
+        && req.to_node_id.is_some()
+        && req.strat_id.is_some()
+    {
+        status = "Complete";
+    } else {
+        status = "Incomplete";
+    }
     let db_client = app_data.db.get().await.unwrap();
     let sql = r#"
         UPDATE video
-        SET status = 'New',
+        SET status = $14,
             updated_ts=current_timestamp,
             submitted_ts=current_timestamp,
             room_id=$2,
@@ -335,6 +345,7 @@ async fn try_submit_video(
                 &req.highlight_start_t,
                 &req.highlight_end_t,
                 &req.video_id,
+                &status,
             ],
         )
         .await?;
@@ -450,7 +461,7 @@ async fn try_edit_video(
     match account_info.permission {
         Permission::Editor => {
             // Editors are authorized to edit any video, so no check needed.
-        },
+        }
         Permission::Default => {
             let sql = "SELECT updated_account_id FROM video WHERE id=$1";
             let stmt = db_client.prepare_cached(&sql).await?;
@@ -713,7 +724,10 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
         ));
         param_values.push(req.user_id.as_ref().unwrap());
     }
-    sql_filters.push(format!("v.status = ANY(regexp_split_to_array(${},','))", param_values.len() + 1));
+    sql_filters.push(format!(
+        "v.status = ANY(regexp_split_to_array(${},','))",
+        param_values.len() + 1
+    ));
     param_values.push(&req.status_list);
     if sql_filters.len() > 0 {
         sql_parts.push(format!("WHERE {}\n", sql_filters.join(" AND ")));
@@ -827,12 +841,14 @@ async fn get_video(
         app_data.db.get().await.map_err(|e| {
             actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR)
         })?;
-    let stmt = db.prepare_cached(&sql).await.map_err(|e| {
-        actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR)
-    })?;
-    let row = db.query_one(&stmt, &[&req.video_id]).await.map_err(|e| {
-        actix_web::error::InternalError::new(e, StatusCode::NOT_FOUND)
-    })?;
+    let stmt = db
+        .prepare_cached(&sql)
+        .await
+        .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
+    let row = db
+        .query_one(&stmt, &[&req.video_id])
+        .await
+        .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::NOT_FOUND))?;
 
     let status_str: String = row.get("status");
     let response = GetVideoResponse {

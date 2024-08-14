@@ -1,4 +1,5 @@
 // TODO: Split this up to make it more manageable.
+// Maybe use some kind of modern framework and make it less of a mess?
 var frameOffsets = null;
 var animationEnabled = false;
 var animationFrameResolution = 3;
@@ -656,7 +657,10 @@ async function updateFilter() {
     }
     req.status_list = statuses;
     req.sort_by = "SubmittedTimestamp";
-    req.limit = 10;
+    
+    // The backend supports pagination but we're not using it yet.
+    // If we add a lot of videos, consider dynamically loading the table rows as the user scrolls down.
+    req.limit = 10000;
 
     let params = new URLSearchParams(req).toString();
     let result = await fetch(`/list-videos?${params}`);

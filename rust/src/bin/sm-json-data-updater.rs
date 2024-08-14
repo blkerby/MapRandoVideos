@@ -300,6 +300,33 @@ async fn write_strat_table(app_data: &AppData, nodes: &[StratData]) -> Result<()
     Ok(())
 }
 
+async fn update_incomplete_videos(app_data: &AppData) -> Result<()> {
+    // Change videos with invalid or inconsistent IDs to "Incomplete" status.
+    // Except videos that are already "Disabled" are left alone.
+    let db = app_data.db.get().await?;
+    let sql = r#"
+        WITH invalid_ids AS (
+            SELECT v.id
+            FROM video v
+            LEFT JOIN room r ON v.room_id = r.room_id 
+            LEFT JOIN node f ON v.room_id = f.room_id AND v.from_node_id = f.node_id
+            LEFT JOIN node t ON v.room_id = t.room_id AND v.to_node_id = t.node_id
+            LEFT JOIN strat s
+              ON v.room_id = s.room_id 
+              AND v.strat_id = s.strat_id
+              AND v.from_node_id = s.from_node_id 
+              AND v.to_node_id = s.to_node_id
+            WHERE r.room_id IS NULL OR f.node_id IS NULL OR t.node_id IS NULL OR s.strat_id IS NULL
+        )
+        UPDATE video SET status = 'Incomplete'
+        WHERE id IN (SELECT id FROM invalid_ids) AND status != 'Disabled'
+    "#;
+    let stmt = db.prepare_cached(&sql).await?;
+    let cnt = db.execute(&stmt, &[]).await?;
+    info!("{} video(s) updated to 'Incomplete'", cnt);
+    Ok(())
+}
+
 async fn update_tables(git_repo: &Repository, app_data: &AppData) -> Result<()> {
     info!("Loading sm-json-data summary");
     let summary = load_sm_data_summary(git_repo)?;
@@ -308,6 +335,7 @@ async fn update_tables(git_repo: &Repository, app_data: &AppData) -> Result<()> 
     write_room_table(app_data, &summary.rooms).await?;
     write_node_table(app_data, &summary.nodes).await?;
     write_strat_table(app_data, &summary.strats).await?;
+    update_incomplete_videos(app_data).await?;
     info!("Successfully rewrote tables");
     Ok(())
 }
