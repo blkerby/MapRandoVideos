@@ -12,13 +12,13 @@ use futures_util::StreamExt as _;
 use log::{error, info};
 use map_rando_videos::{create_object_store, EncodingTask};
 use object_store::ObjectStore;
-use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+use serde::{de::{self, IntoDeserializer}, Deserialize, Serialize};
+use std::{fmt, str::FromStr};
 use tokio::io::AsyncWriteExt as _;
 use tokio::join;
 use tokio_postgres::types::ToSql;
 
-#[derive(strum::EnumString)]
+#[derive(strum::EnumString, Serialize)]
 enum Permission {
     Default,
     Editor,
@@ -162,13 +162,25 @@ async fn authenticate(app_data: web::Data<AppData>, auth: &BasicAuth) -> Result<
     }
 }
 
+#[derive(Serialize)]
+struct SignInResponse {
+    user_id: i32,
+    permission: Permission,
+}
+
 #[get("/sign-in")]
-async fn sign_in(app_data: web::Data<AppData>, auth: BasicAuth) -> impl Responder {
+async fn sign_in(app_data: web::Data<AppData>, auth: BasicAuth) -> actix_web::Result<impl Responder> {
     match authenticate(app_data.clone(), &auth).await {
-        Ok(_) => HttpResponse::Ok().body(""),
+        Ok(account_info) => {
+            let response = SignInResponse {
+                user_id: account_info.id,
+                permission: account_info.permission,
+            };
+            Ok(web::Json(response))
+        }
         Err(e) => {
             error!("Failed sign-in: {}", e);
-            HttpResponse::Unauthorized().body("")
+            Err(actix_web::error::ErrorUnauthorized(""))
         }
     }
 }
@@ -606,6 +618,7 @@ struct ListVideosRequest {
     strat_id: Option<i32>,
     user_id: Option<i32>,
     video_id: Option<i32>,
+    status_list: String,
     sort_by: ListVideosSortBy,
     limit: Option<i64>,
     offset: Option<i64>,
@@ -700,6 +713,8 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
         ));
         param_values.push(req.user_id.as_ref().unwrap());
     }
+    sql_filters.push(format!("v.status = ANY(regexp_split_to_array(${},','))", param_values.len() + 1));
+    param_values.push(&req.status_list);
     if sql_filters.len() > 0 {
         sql_parts.push(format!("WHERE {}\n", sql_filters.join(" AND ")));
     }
@@ -1010,6 +1025,7 @@ async fn main() {
             .service(get_video)
             .service(edit_video)
             .service(actix_files::Files::new("/js", "../js"))
+            .service(actix_files::Files::new("/css", "../css"))
             .service(actix_files::Files::new("/static", "static"))
     })
     .bind("0.0.0.0:8081")

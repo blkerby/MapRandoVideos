@@ -481,29 +481,36 @@ function updateLogin() {
     }
 }
 
-function signIn() {
+async function signIn() {
     let username = document.getElementById("username").value;
     let token = document.getElementById("token").value;
     
-    xhr = new XMLHttpRequest();
-    xhr.onload = function () {
-        if (xhr.status == 200) {
-            localStorage.setItem("username", username);
-            localStorage.setItem("token", token);
-            updateLogin();
-            bootstrap.Modal.getInstance(document.getElementById("loginModal")).hide();
-        } else {
-            document.getElementById("loginFailed").classList.remove("d-none");
-        }
-    };
-    xhr.open("GET", "/sign-in", true, username, token);
-    xhr.send();
+    let response = await fetch("/sign-in", {
+      headers: {
+        "Authorization": 'Basic ' + btoa(username + ":" + token),
+      }  
+    });
+    if (response.ok) {
+        info = await response.json();
+        localStorage.setItem("username", username);
+        localStorage.setItem("token", token);
+        localStorage.setItem("userId", info.user_id);
+        localStorage.setItem("permission", info.permission);
+        updateLogin();
+        bootstrap.Modal.getInstance(document.getElementById("loginModal")).hide();
+    } else {
+        document.getElementById("loginFailed").classList.remove("d-none");
+    }
+    updateFilter();
 }
 
 function signOut() {
     localStorage.removeItem("username");
     localStorage.removeItem("token");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("permission");
     updateLogin();
+    updateFilter();
 }
 
 function tryParseInt(s) {
@@ -610,11 +617,21 @@ async function updateFilter() {
         await updateUserList();
     }
 
+    let userId = localStorage.getItem("userId");
+    let permission = localStorage.getItem("permission");
+
     let room = document.getElementById("filterRoom").value;
     let fromNode = document.getElementById("filterFromNode").value;
     let toNode = document.getElementById("filterToNode").value;
     let strat = document.getElementById("filterStrat").value;
     let user = document.getElementById("filterUser").value;
+    let statuses = [];
+    
+    for (s of document.getElementById("filterStatus").options) {
+        if (s.selected) {
+            statuses.push(s.value);
+        }
+    }
 
     let req = {};
     if (room != "") {
@@ -637,6 +654,7 @@ async function updateFilter() {
     if (filterVideoId !== null) {
         req.video_id = filterVideoId;
     }
+    req.status_list = statuses;
     req.sort_by = "SubmittedTimestamp";
     req.limit = 10;
 
@@ -769,15 +787,17 @@ async function updateFilter() {
         shareButton.innerHTML = '<i class="bi bi-clipboard"></i> Share';
         shareCol.appendChild(shareButton);
 
-        let editButton = document.createElement('button');
-        editButton.classList.add("btn");
-        editButton.classList.add("btn-success");
-        editButton.classList.add("my-1")
-        editButton.setAttribute("onclick", `openEditVideo(${video.id})`);
-        // editButton.setAttribute("data-bs-toggle", "modal");
-        // editButton.setAttribute("data-bs-target", "#editModal");
-        editButton.innerHTML = '<i class="bi bi-pencil"></i> Edit';
-        shareCol.appendChild(editButton);
+        if (permission == "Editor" || userId == video.updated_user_id) {
+            let editButton = document.createElement('button');
+            editButton.classList.add("btn");
+            editButton.classList.add("btn-success");
+            editButton.classList.add("my-1")
+            editButton.setAttribute("onclick", `openEditVideo(${video.id})`);
+            // editButton.setAttribute("data-bs-toggle", "modal");
+            // editButton.setAttribute("data-bs-target", "#editModal");
+            editButton.innerHTML = '<i class="bi bi-pencil"></i> Edit';
+            shareCol.appendChild(editButton);    
+        }
 
         let pStatus = document.createElement('p');
         pStatus.classList.add("m-0");
