@@ -311,9 +311,19 @@ async function updateFile() {
         return;
     }
 
-    // TODO: handle multiple files
+    // Sort the files alphabetically by filename:
+    var fileList = [];
+    for (file of videoFile.files) {
+        fileList.push(file);
+    }
+    fileList.sort((a, b) => {
+        if (a.name < b.name) return -1;
+        if (a.name > b.name) return 1;
+        return 0;
+    });
+
     frameOffsets = [];
-    for (const file of videoFile.files) {
+    for (const file of fileList) {
         await loadAVIMetadata(file);
     }
 
@@ -341,9 +351,9 @@ async function updateFile() {
     var newVideoId = null;
     let username = localStorage.getItem("username");
     let token = localStorage.getItem("token");
-    for (var i = 0; i < videoFile.files.length; i++) {
+    for (var i = 0; i < fileList.length; i++) {
         var start = performance.now();
-        var file = videoFile.files[i];
+        var file = fileList[i];
         var compressedStream = file.stream().pipeThrough(new CompressionStream("gzip"));
         var compressedData = new Uint8Array(await new Response(compressedStream).arrayBuffer());
         var elapsedTime = performance.now() - start;

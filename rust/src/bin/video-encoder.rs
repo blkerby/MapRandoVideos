@@ -4,12 +4,12 @@ use std::{
 
 use anyhow::{bail, Result};
 use clap::Parser;
-use futures::StreamExt;
+use futures::{future::join_all, StreamExt};
 use lapin::options::BasicQosOptions;
 use log::info;
 use map_rando_videos::{create_object_store, EncodingTask};
 use object_store::{path::Path, ObjectStore};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Parser)]
 struct Args {
@@ -81,8 +81,6 @@ async fn build_app_data() -> Result<AppData> {
 }
 
 async fn create_input_pipes(app_data: &AppData, video_id: i32, num_parts: i32) -> Result<()> {
-    info!("Reading input");
-
     for part_num in 0..num_parts {
         let object_path = Path::parse(format!("avi-xz/{}-{}.avi.xz", video_id, part_num))?;
         let compressed_input = app_data.video_store.get(&object_path).await?.bytes().await?;
@@ -102,18 +100,20 @@ async fn create_input_pipes(app_data: &AppData, video_id: i32, num_parts: i32) -
 
 async fn feed_part_to_pipe(part_num: i32) -> Result<()> {
     let input_filename = format!("/tmp/part-{}.avi.xz", part_num);
-    let compressed_input = std::fs::read(input_filename).unwrap();
+    let compressed_input = tokio::fs::read(input_filename).await.unwrap();
     let mut uncompressed_input =
         async_compression::tokio::bufread::XzDecoder::new(compressed_input.deref());
     let pipe_path = format!("/tmp/video-{}.pipe", part_num);
-    let mut pipe = std::fs::OpenOptions::new().write(true).open(pipe_path)?;
+    let mut pipe = tokio::fs::OpenOptions::new().write(true).open(pipe_path).await?;
     let mut buf = vec![0u8; 65536];
+    let mut total_n = 0;
     loop {
         let n = uncompressed_input.read(&mut buf).await?;
         if n == 0 {
             break;
         }
-        if pipe.write_all(&buf[..n]).is_err() {
+        total_n += n;
+        if pipe.write_all(&buf[..n]).await.is_err() {
             // We ignore errors writing to the pipe.
             // A broken pipe is expected since ffmpeg closes the input before reading to the end.
             break;
@@ -123,15 +123,14 @@ async fn feed_part_to_pipe(part_num: i32) -> Result<()> {
 }
 
 async fn feed_input_to_pipes(num_parts: i32) -> Result<()> {
-    info!("Piping input");
-    thread::scope(|scope| {
-        for part_num in 0..num_parts {
-            scope.spawn(move || {
-                futures::executor::block_on(feed_part_to_pipe(part_num)).unwrap();
-            });
-        }    
-    });
-    info!("Done piping input");
+    let mut tasks = vec![];
+    for part_num in 0..num_parts {
+        tasks.push(feed_part_to_pipe(part_num));
+    }
+    let res = join_all(tasks).await;
+    for task_res in res {
+        task_res?;
+    } 
     Ok(())
 }
 
@@ -172,11 +171,10 @@ async fn encode_thumbnail(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    feed_input_to_pipes(num_parts).await?;
-
+    let fut = tokio::spawn(feed_input_to_pipes(num_parts));
     let status = child.wait()?;
     info!("ffmpeg {}", status);
-
+    fut.abort();
     if !status.success() {
         bail!("ffmpeg returned non-zero status");
     }
@@ -238,15 +236,14 @@ async fn encode_highlight(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    feed_input_to_pipes(num_parts).await?;
-
+    let fut = tokio::spawn(feed_input_to_pipes(num_parts));
     let status = child.wait()?;
     info!("ffmpeg {}", status);
-
+    fut.abort();
     if !status.success() {
         bail!("ffmpeg returned non-zero status");
     }
-
+    
     // Write the output highlight to object storage:
     let output_data = std::fs::read(output_path)?;
     let output_key = object_store::path::Path::parse(format!("webp/{}.webp", video_id))?;
@@ -298,11 +295,14 @@ async fn encode_full_video(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    feed_input_to_pipes(num_parts).await?;
-
+    let fut = tokio::spawn(feed_input_to_pipes(num_parts));
     let status = child.wait()?;
     info!("ffmpeg {}", status);
-
+    fut.abort();
+    if !status.success() {
+        bail!("ffmpeg returned non-zero status");
+    }
+    
     if !status.success() {
         bail!("ffmpeg returned non-zero status");
     }
