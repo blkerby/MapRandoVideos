@@ -6,8 +6,8 @@ var animationEnabled = false;
 var animationFrameResolution = 3;
 var animationFrame = 0;
 var videoId = null;
-var uploading = false;
-var doneUploading = false;
+var startUploadKey = null;
+var finishUploadKey = null;
 var submitting = false;
 var userMapping = null;
 
@@ -305,7 +305,8 @@ async function readFileChunks(file, chunkSize) {
 
 async function updateFile() {
     videoId = null;
-    doneUploading = false;  
+    let uploadKey = Math.random();
+    startUploadKey = uploadKey;
     var videoFile = document.getElementById("videoFile");
     if (videoFile.files.length == 0) {
         return;
@@ -351,6 +352,7 @@ async function updateFile() {
     var newVideoId = null;
     let username = localStorage.getItem("username");
     let token = localStorage.getItem("token");
+    
     for (var i = 0; i < fileList.length; i++) {
         var start = performance.now();
         var file = fileList[i];
@@ -382,10 +384,10 @@ async function updateFile() {
             throw new Error(`Error uploading video: ${uploadResponse.status}`);
         }
         newVideoId = parseInt(await uploadResponse.text());
+        videoId = newVideoId;
     }
-    doneUploading = true;
+    finishUploadKey = uploadKey;
     console.log("finished uploading video: id=" + newVideoId);
-    videoId = newVideoId;
 }
 
 async function updateRoomOptions(roomSelectList) {
@@ -558,7 +560,7 @@ async function submitVideo() {
     let uploadModal = bootstrap.Modal.getInstance(document.getElementById("uploadModal"));
     submitModal.show();
     uploadModal.hide();
-    while (!doneUploading) {
+    while (startUploadKey === null || startUploadKey != finishUploadKey) {
         // Sleep for 200 ms
         await new Promise(r => setTimeout(r, 200));
     }
