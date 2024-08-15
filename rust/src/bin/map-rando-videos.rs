@@ -1055,7 +1055,7 @@ async fn get_video(
         status: VideoStatus::try_from(status_str.as_str()).unwrap(),
         crop_size: row.get("crop_size"),
         crop_center_x: row.get("crop_center_x"),
-        crop_center_y: row.get("crop_center_x"),
+        crop_center_y: row.get("crop_center_y"),
         thumbnail_t: row.get("thumbnail_t"),
         highlight_start_t: row.get("highlight_start_t"),
         highlight_end_t: row.get("highlight_end_t"),
