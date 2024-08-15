@@ -39,17 +39,17 @@ async function loadAVIMetadata(file) {
     
     var headerListSize = topDV.getUint32(16, true) - 4;
     var headerListStart = 24;
-    headerDV = await readSlice(file, headerListStart, headerListSize);
+    let headerDV = await readSlice(file, headerListStart, headerListSize);
     if (headerDV.getUint32(0) != 0x61766968) {
         return Promise.reject("bad header: avih");
     }
     var avihStart = 8;
-    avihSize = headerDV.getUint32(4, true);
+    let avihSize = headerDV.getUint32(4, true);
 
     // Extract relevant fields from 'avih' header:
-    totalFrames = headerDV.getUint32(avihStart + 16, true);
-    width = headerDV.getUint32(avihStart + 32, true);
-    height = headerDV.getUint32(avihStart + 36, true);
+    let totalFrames = headerDV.getUint32(avihStart + 16, true);
+    let width = headerDV.getUint32(avihStart + 32, true);
+    let height = headerDV.getUint32(avihStart + 36, true);
     
     var strlStart = avihStart + avihSize;
     if (headerDV.getUint32(strlStart) != 0x4C495354) {
@@ -124,8 +124,7 @@ async function loadAVIMetadata(file) {
     
     var idxDV = await readSlice(file, idxStart + 8, idxSize);
     var pos = 0;
-    
-    frameOffsets = [];
+    var cnt = 0;
     while (pos < idxSize) {
         chunkId = idxDV.getUint32(pos, true);
         flags = idxDV.getUint32(pos + 4, true);
@@ -133,12 +132,13 @@ async function loadAVIMetadata(file) {
         size = idxDV.getUint32(pos + 12, true);
         if (chunkId == 0x62643030) {
             frameOffsets.push([file, offset + moviStart + 8]);
+            cnt += 1;
         }
         pos += 16;
     }
 
-    if (totalFrames != frameOffsets.length) {
-        return Promise.reject(`index video frame count ${frameOffsets.length} does not match total frame count ${totalFrames}`);
+    if (totalFrames != cnt) {
+        return Promise.reject(`index video frame count ${cnt} does not match total frame count ${totalFrames}`);
     }
 
     console.log(`Loaded video header: ${width} x ${height}, ${fps} fps, ${totalFrames} frames`);
@@ -312,9 +312,10 @@ async function updateFile() {
     }
 
     // TODO: handle multiple files
-    var file = videoFile.files[0];
-
-    await loadAVIMetadata(file);
+    frameOffsets = [];
+    for (const file of videoFile.files) {
+        await loadAVIMetadata(file);
+    }
 
     document.getElementById("thumbnail").classList.remove("d-none");
     document.getElementById("highlightStart").classList.remove("d-none");
@@ -326,46 +327,55 @@ async function updateFile() {
 
     var thumbnailTime = document.getElementById("thumbnailTime")
     thumbnailTime.value = 300;
-    thumbnailTime.max = totalFrames - 1;
+    thumbnailTime.max = frameOffsets.length - 1;
 
     var highlightStartTime = document.getElementById("highlightStartTime")
     highlightStartTime.value = 180;
-    highlightStartTime.max = totalFrames - 1;
+    highlightStartTime.max = frameOffsets.length - 1;
 
     var highlightEndTime = document.getElementById("highlightEndTime")
     highlightEndTime.value = 420;
-    highlightEndTime.max = totalFrames - 1;
+    highlightEndTime.max = frameOffsets.length - 1;
 
     updateControls();
-
-    var start = performance.now();
-    var compressedStream = file.stream().pipeThrough(new CompressionStream("gzip"));
-    var compressedData = new Uint8Array(await new Response(compressedStream).arrayBuffer());
-    var elapsedTime = performance.now() - start;
-    console.log(`compression time elapsed (ms): ${elapsedTime}, compressed size: ${compressedData.length}`);
-
+    var newVideoId = null;
     let username = localStorage.getItem("username");
     let token = localStorage.getItem("token");
-
-    var start = performance.now();
-    var uploadResponse = await fetch("/upload-video", {
-        method: "POST",
-        headers: {
+    for (var i = 0; i < videoFile.files.length; i++) {
+        var start = performance.now();
+        var file = videoFile.files[i];
+        var compressedStream = file.stream().pipeThrough(new CompressionStream("gzip"));
+        var compressedData = new Uint8Array(await new Response(compressedStream).arrayBuffer());
+        var elapsedTime = performance.now() - start;
+        console.log(`part ${i}: compression time elapsed (ms)=${elapsedTime}, compressed size=${compressedData.length}`);
+    
+        var start = performance.now();
+        var headers = {
             "Content-Type": "video/avi",
             "Content-Encoding": "gzip",
             "Authorization": 'Basic ' + btoa(username + ":" + token),
-        },
-        body: compressedData,
-    });
-    var elapsedTime = performance.now() - start;
-    console.log(`upload time elapsed (ms): ${elapsedTime}`);
-
-    if (!uploadResponse.ok) {
-        throw new Error(`Error uploading video: ${uploadResponse.status}`);
+            "X-MapRandoVideos-NumParts": videoFile.files.length,
+            "X-MapRandoVideos-PartNum": i,
+        };
+        if (newVideoId !== null) {
+            headers["X-MapRandoVideos-VideoId"] = newVideoId;
+        }
+        var uploadResponse = await fetch("/upload-video", {
+            method: "POST",
+            headers: headers,
+            body: compressedData,
+        });
+        var elapsedTime = performance.now() - start;
+        console.log(`part ${i}: upload time elapsed (ms)=${elapsedTime}`);
+    
+        if (!uploadResponse.ok) {
+            throw new Error(`Error uploading video: ${uploadResponse.status}`);
+        }
+        newVideoId = parseInt(await uploadResponse.text());
     }
-    videoId = parseInt(await uploadResponse.text());
     doneUploading = true;
-    console.log("finished uploading video: id=" + videoId);
+    console.log("finished uploading video: id=" + newVideoId);
+    videoId = newVideoId;
 }
 
 async function updateRoomOptions(roomSelectList) {
@@ -971,8 +981,13 @@ function updateEditStatus() {
 
 async function deleteVideo() {
     let editModal = bootstrap.Modal.getInstance(document.getElementById("editModal"));
+    let username = localStorage.getItem("username");
+    let token = localStorage.getItem("token");
     let response = await fetch(`/?video_id=${videoId}`, {
-        "method": "DELETE"
+        "method": "DELETE",
+        "headers": {
+            "Authorization": 'Basic ' + btoa(username + ":" + token),        
+        }
     });
     if (response.ok) {
         console.log(`Successfully deleted video: video_id=${videoId}`);

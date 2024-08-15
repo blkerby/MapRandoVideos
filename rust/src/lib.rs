@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub enum EncodingTask {
     ThumbnailImage {
         video_id: i32,
+        num_parts: i32,
         crop_center_x: i32,
         crop_center_y: i32,
         crop_size: i32,
@@ -14,6 +15,7 @@ pub enum EncodingTask {
     },
     HighlightAnimation {
         video_id: i32,
+        num_parts: i32,
         crop_center_x: i32,
         crop_center_y: i32,
         crop_size: i32,
@@ -22,6 +24,7 @@ pub enum EncodingTask {
     },
     FullVideo {
         video_id: i32,
+        num_parts: i32,
     },
 }
 

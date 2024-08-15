@@ -1,7 +1,5 @@
 use std::{
-    io::Write,
-    ops::Deref,
-    process::{Command, Stdio},
+    fs::File, io::Write, ops::Deref, process::{Command, Stdio}, thread
 };
 
 use anyhow::{bail, Result};
@@ -82,46 +80,32 @@ async fn build_app_data() -> Result<AppData> {
     Ok(app_data)
 }
 
-async fn encode_thumbnail(
-    app_data: &AppData,
-    video_id: i32,
-    crop_center_x: i32,
-    crop_center_y: i32,
-    crop_size: i32,
-    frame_number: i32,
-) -> Result<()> {
-    let input_path = Path::parse(format!("avi-xz/{}.avi.xz", video_id))?;
-    let compressed_input = app_data.video_store.get(&input_path).await?.bytes().await?;
+async fn create_input_pipes(app_data: &AppData, video_id: i32, num_parts: i32) -> Result<()> {
+    info!("Reading input");
+
+    for part_num in 0..num_parts {
+        let object_path = Path::parse(format!("avi-xz/{}-{}.avi.xz", video_id, part_num))?;
+        let compressed_input = app_data.video_store.get(&object_path).await?.bytes().await?;
+        std::fs::write(format!("/tmp/part-{}.avi.xz", part_num), &compressed_input)?;
+        let pipe_path = format!("/tmp/video-{}.pipe", part_num);
+        let _ = std::fs::remove_file(&pipe_path);
+        unix_named_pipe::create(&pipe_path, Some(0o644))?;
+    }
+
+    let mut manifest_file = File::create("/tmp/manifest.txt")?;
+    for i in 0..num_parts {
+        write!(manifest_file, "file '/tmp/video-{}.pipe'\n", i)?;
+    }
+
+    Ok(())
+}
+
+async fn feed_part_to_pipe(part_num: i32) -> Result<()> {
+    let input_filename = format!("/tmp/part-{}.avi.xz", part_num);
+    let compressed_input = std::fs::read(input_filename).unwrap();
     let mut uncompressed_input =
         async_compression::tokio::bufread::XzDecoder::new(compressed_input.deref());
-    let pipe_path = "/tmp/video.pipe";
-    let output_path = "/tmp/thumbnail.png";
-
-    let _ = std::fs::remove_file(pipe_path);
-    unix_named_pipe::create(pipe_path, Some(0o644))?;
-
-    let crop_x = crop_center_x - crop_size / 2;
-    let crop_y = crop_center_y - crop_size / 2;
-
-    // Run ffmpeg to extract and crop a single selected frame from the video:
-    let mut child = Command::new(&app_data.args.ffmpeg_path)
-        .arg("-y")
-        .arg("-i")
-        .arg(pipe_path)
-        .arg("-vf")
-        .arg(&format!(
-            "select=eq(n\\, {frame_number}),crop={crop_size}:{crop_size}:{crop_x}:{crop_y}"
-        ))
-        .arg("-vframes")
-        .arg("1")
-        .arg(output_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .expect("error spawning ffmpeg");
-
-    // Pipe the uncompressed AVI into ffmpeg via named pipe:
+    let pipe_path = format!("/tmp/video-{}.pipe", part_num);
     let mut pipe = std::fs::OpenOptions::new().write(true).open(pipe_path)?;
     let mut buf = vec![0u8; 65536];
     loop {
@@ -135,7 +119,60 @@ async fn encode_thumbnail(
             break;
         }
     }
-    drop(pipe);
+    Ok(())
+}
+
+async fn feed_input_to_pipes(num_parts: i32) -> Result<()> {
+    info!("Piping input");
+    thread::scope(|scope| {
+        for part_num in 0..num_parts {
+            scope.spawn(move || {
+                futures::executor::block_on(feed_part_to_pipe(part_num)).unwrap();
+            });
+        }    
+    });
+    info!("Done piping input");
+    Ok(())
+}
+
+async fn encode_thumbnail(
+    app_data: &AppData,
+    video_id: i32,
+    num_parts: i32,
+    crop_center_x: i32,
+    crop_center_y: i32,
+    crop_size: i32,
+    frame_number: i32,
+) -> Result<()> {
+    create_input_pipes(app_data, video_id, num_parts).await?;
+
+    let output_path = "/tmp/thumbnail.png";
+    let crop_x = crop_center_x - crop_size / 2;
+    let crop_y = crop_center_y - crop_size / 2;
+
+    // Run ffmpeg to extract and crop a single selected frame from the video:
+    let mut child = Command::new(&app_data.args.ffmpeg_path)
+        .arg("-y")
+        .arg("-safe")
+        .arg("0")
+        .arg("-f")
+        .arg("concat")
+        .arg("-i")
+        .arg("/tmp/manifest.txt")
+        .arg("-vf")
+        .arg(&format!(
+            "select=eq(n\\, {frame_number}),crop={crop_size}:{crop_size}:{crop_x}:{crop_y}"
+        ))
+        .arg("-vframes")
+        .arg("1")
+        .arg(output_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("error spawning ffmpeg");
+
+    feed_input_to_pipes(num_parts).await?;
 
     let status = child.wait()?;
     info!("ffmpeg {}", status);
@@ -164,30 +201,28 @@ async fn encode_thumbnail(
 async fn encode_highlight(
     app_data: &AppData,
     video_id: i32,
+    num_parts: i32,
     crop_center_x: i32,
     crop_center_y: i32,
     crop_size: i32,
     start_frame_number: i32,
     end_frame_number: i32,
 ) -> Result<()> {
-    let input_path = Path::parse(format!("avi-xz/{}.avi.xz", video_id))?;
-    let compressed_input = app_data.video_store.get(&input_path).await?.bytes().await?;
-    let mut uncompressed_input =
-        async_compression::tokio::bufread::XzDecoder::new(compressed_input.deref());
-    let pipe_path = "/tmp/video.pipe";
+    create_input_pipes(app_data, video_id, num_parts).await?;
+
     let output_path = "/tmp/highlight.webp";
-
-    let _ = std::fs::remove_file(pipe_path);
-    unix_named_pipe::create(pipe_path, Some(0o644))?;
-
     let crop_x = crop_center_x - crop_size / 2;
     let crop_y = crop_center_y - crop_size / 2;
 
     // Run ffmpeg to extract and crop a selected range of frames from the video, cutting the frame rate by a factor of 3:
     let mut child = Command::new(&app_data.args.ffmpeg_path)
         .arg("-y")
+        .arg("-safe")
+        .arg("0")
+        .arg("-f")
+        .arg("concat")
         .arg("-i")
-        .arg(pipe_path)
+        .arg("/tmp/manifest.txt")
         .arg("-vf")
         .arg(&format!(
             "select='between(n\\, {start_frame_number}, {end_frame_number})*not(mod(n-{start_frame_number}\\,3))',crop={crop_size}:{crop_size}:{crop_x}:{crop_y}"
@@ -203,22 +238,7 @@ async fn encode_highlight(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    // Pipe the uncompressed AVI into ffmpeg via named pipe:
-    let mut pipe = std::fs::OpenOptions::new().write(true).open(pipe_path)?;
-    let mut buf = vec![0u8; 65536];
-    loop {
-        let n = uncompressed_input.read(&mut buf).await?;
-        if n == 0 {
-            break;
-        }
-        if let Err(e) = pipe.write_all(&buf[..n]) {
-            // In case of error writing to the pipe, we log it but don't crash.
-            // A broken pipe is expected since ffmpeg closes the input before reading to the end.
-            info!("Error writing to pipe: {}", e);
-            break;
-        }
-    }
-    drop(pipe);
+    feed_input_to_pipes(num_parts).await?;
 
     let status = child.wait()?;
     info!("ffmpeg {}", status);
@@ -247,23 +267,22 @@ async fn encode_highlight(
 async fn encode_full_video(
     app_data: &AppData,
     video_id: i32,
+    num_parts: i32,
 ) -> Result<()> {
-    let input_path = Path::parse(format!("avi-xz/{}.avi.xz", video_id))?;
-    let compressed_input = app_data.video_store.get(&input_path).await?.bytes().await?;
-    let mut uncompressed_input =
-        async_compression::tokio::bufread::XzDecoder::new(compressed_input.deref());
-    let pipe_path = "/tmp/video.pipe";
-    let output_path = "/tmp/full_video.mp4";
+    create_input_pipes(app_data, video_id, num_parts).await?;
 
-    let _ = std::fs::remove_file(pipe_path);
-    unix_named_pipe::create(pipe_path, Some(0o644))?;
+    let output_path = "/tmp/full_video.mp4";
 
     // Run ffmpeg to encode the video into an mp4. For best compatibility, we use yuv420p pixel format;
     // this subsamples the chroma, which we counteract by upscaling the video resolution by 2x.
     let mut child = Command::new(&app_data.args.ffmpeg_path)
         .arg("-y")
+        .arg("-safe")
+        .arg("0")
+        .arg("-f")
+        .arg("concat")
         .arg("-i")
-        .arg(pipe_path)
+        .arg("/tmp/manifest.txt")
         .arg("-vf")
         .arg("scale=512:-1:flags=neighbor")
         .arg("-pix_fmt")
@@ -279,22 +298,7 @@ async fn encode_full_video(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    // Pipe the uncompressed AVI into ffmpeg via named pipe:
-    let mut pipe = std::fs::OpenOptions::new().write(true).open(pipe_path)?;
-    let mut buf = vec![0u8; 65536];
-    loop {
-        let n = uncompressed_input.read(&mut buf).await?;
-        if n == 0 {
-            break;
-        }
-        if let Err(e) = pipe.write_all(&buf[..n]) {
-            // In case of error writing to the pipe, we log it but don't crash.
-            // A broken pipe is expected since ffmpeg closes the input before reading to the end.
-            info!("Error writing to pipe: {}", e);
-            break;
-        }
-    }
-    drop(pipe);
+    feed_input_to_pipes(num_parts).await?;
 
     let status = child.wait()?;
     info!("ffmpeg {}", status);
@@ -324,6 +328,7 @@ async fn process_task(task: &EncodingTask, app_data: &AppData) -> Result<()> {
     match task {
         &EncodingTask::ThumbnailImage {
             video_id,
+            num_parts,
             crop_center_x,
             crop_center_y,
             crop_size,
@@ -332,6 +337,7 @@ async fn process_task(task: &EncodingTask, app_data: &AppData) -> Result<()> {
             encode_thumbnail(
                 &app_data,
                 video_id,
+                num_parts,
                 crop_center_x,
                 crop_center_y,
                 crop_size,
@@ -341,6 +347,7 @@ async fn process_task(task: &EncodingTask, app_data: &AppData) -> Result<()> {
         }
         &EncodingTask::HighlightAnimation {
             video_id,
+            num_parts,
             crop_center_x,
             crop_center_y,
             crop_size,
@@ -350,6 +357,7 @@ async fn process_task(task: &EncodingTask, app_data: &AppData) -> Result<()> {
             encode_highlight(
                 app_data,
                 video_id,
+                num_parts,
                 crop_center_x,
                 crop_center_y,
                 crop_size,
@@ -358,8 +366,8 @@ async fn process_task(task: &EncodingTask, app_data: &AppData) -> Result<()> {
             )
             .await?;
         }
-        &EncodingTask::FullVideo { video_id } => {
-            encode_full_video(app_data, video_id).await?;
+        &EncodingTask::FullVideo { video_id, num_parts } => {
+            encode_full_video(app_data, video_id, num_parts).await?;
         }
     }
     Ok(())

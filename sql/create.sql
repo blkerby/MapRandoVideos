@@ -10,6 +10,8 @@ CREATE TABLE account (
 
 CREATE TABLE video (
     id serial primary key,
+    num_parts integer NOT NULL,
+    next_part_num integer NOT NULL,
     status varchar(100) NOT NULL,
     created_ts timestamptz NOT NULL default current_timestamp,
     created_account_id integer NOT NULL,

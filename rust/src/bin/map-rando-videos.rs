@@ -1,8 +1,5 @@
 use actix_web::{
-    self, delete, get,
-    http::StatusCode,
-    middleware::{Compress, Logger},
-    post, web, App, HttpResponse, HttpServer, Responder,
+    self, delete, get, http::StatusCode, middleware::{Compress, Logger}, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder
 };
 use actix_web_httpauth::extractors::basic::BasicAuth;
 use anyhow::{bail, Context, Result};
@@ -13,6 +10,7 @@ use log::{error, info};
 use map_rando_videos::{create_object_store, EncodingTask};
 use object_store::ObjectStore;
 use serde::{Deserialize, Serialize};
+use core::str;
 use std::str::FromStr as _;
 use tokio::io::AsyncWriteExt as _;
 use tokio::join;
@@ -186,15 +184,61 @@ async fn sign_in(
 }
 
 async fn try_upload_video(
+    req: &HttpRequest,
     mut gzip_payload: web::Payload,
     app_data: web::Data<AppData>,
     account_info: &AccountInfo,
 ) -> Result<i32> {
-    let sql = "SELECT nextval('video_id_seq')";
+    let video_id: Option<i32> = if let Some(h) = req.headers().get("X-MapRandoVideos-VideoId") {
+        let s = str::from_utf8(h.as_bytes())?;
+        Some(i32::from_str(s)?)
+    } else {
+        None
+    };
+    info!("video_id: {:?}", video_id);
+    let num_parts = {
+        let v = req.headers().get("X-MapRandoVideos-NumParts").context("missing X-MapRandoVideos-NumParts")?;
+        let s = str::from_utf8(v.as_bytes())?;
+        i32::from_str(s)?
+    };
+    info!("num_parts: {}", num_parts);
+    let part_num = {
+        let v = req.headers().get("X-MapRandoVideos-PartNum").context("missing X-MapRandoVideos-PartNum")?;
+        let s = str::from_utf8(v.as_bytes())?;
+        i32::from_str(s)?
+    };
+    info!("part_num: {}", part_num);
+
+    if part_num == 0 && video_id.is_some() {
+        bail!("Unexpected X-MapRandoVideos-VideoId header on first part.");
+    } else if part_num != 0 && video_id.is_none() {
+        bail!("Missing X-MapRandoVideos-VideoId header on non-first part.");
+    }
+
     let db_client = app_data.db.get().await.unwrap();
-    let stmt = db_client.prepare_cached(sql).await?;
-    let result = db_client.query_one(&stmt, &[]).await?;
-    let id = result.get::<_, i64>(0) as i32;
+    let id = if let Some(id) = video_id {
+        id
+    } else {
+        let sql = "SELECT nextval('video_id_seq')";
+        let stmt = db_client.prepare_cached(sql).await?;
+        let result = db_client.query_one(&stmt, &[]).await?;
+        let id = result.get::<_, i64>(0) as i32;
+        id
+    };
+
+    if part_num != 0 {
+        let sql = r#"
+            SELECT next_part_num
+            FROM video
+            WHERE id = $1 AND created_account_id = $2
+        "#;
+        let stmt = db_client.prepare_cached(sql).await?;
+        let result = db_client.query_one(&stmt, &[&id, &account_info.id]).await?;
+        let next_part_num: i32 = result.get(0);
+        if next_part_num != part_num {
+            bail!("Out-of-sequence part number {}. Expecting {}", part_num, next_part_num);
+        }
+    }
 
     let mut compressed_data: Vec<u8> = vec![];
     let xz_enc = async_compression::tokio::write::XzEncoder::with_quality(
@@ -216,8 +260,8 @@ async fn try_upload_video(
     xz_enc.shutdown().await?;
 
     let object_path = object_store::path::Path::parse(format!(
-        "{}avi-xz/{}.avi.xz",
-        app_data.args.video_storage_prefix, id
+        "{}avi-xz/{}-{}.avi.xz",
+        app_data.args.video_storage_prefix, id, part_num
     ))?;
     let compressed_len = compressed_data.len();
     info!(
@@ -233,19 +277,32 @@ async fn try_upload_video(
         app_data.args.video_storage_bucket_url, object_path, compressed_len
     );
 
-    let sql = r#"
-        INSERT INTO video (id, status, created_account_id, updated_account_id)
-        VALUES ($1, 'Pending', $2, $2)
-    "#;
-    let stmt = db_client.prepare_cached(sql).await?;
-    db_client.execute(&stmt, &[&id, &account_info.id]).await?;
-    info!("Inserted video into database (id={})", id);
+    if part_num == 0 {
+        let sql = r#"
+            INSERT INTO video (id, num_parts, next_part_num, status, created_account_id, updated_account_id)
+            VALUES ($1, $2, 1, 'Pending', $3, $3)
+        "#;
+        let stmt = db_client.prepare_cached(sql).await?;
+        db_client.execute(&stmt, &[&id, &num_parts, &account_info.id]).await?;
+        info!("Inserted video into database (id={})", id);
+    } else {
+        let sql = r#"
+            UPDATE video 
+            SET next_part_num = $1
+            WHERE id = $2
+        "#;
+        let stmt = db_client.prepare_cached(sql).await?;
+        let next_part_num = part_num + 1;
+        db_client.execute(&stmt, &[&next_part_num, &id]).await?;
+        info!("Updated next_part_num (id={})", id);
+    }
 
     Ok(id)
 }
 
 #[post("/upload-video")]
 async fn upload_video(
+    req: HttpRequest,
     payload: web::Payload,
     app_data: web::Data<AppData>,
     auth: BasicAuth,
@@ -258,7 +315,7 @@ async fn upload_video(
         }
     };
 
-    let id = match try_upload_video(payload, app_data, &account_info).await {
+    let id = match try_upload_video(&req, payload, app_data, &account_info).await {
         Ok(id) => id,
         Err(e) => {
             error!("Failed to upload video: {}", e);
@@ -308,7 +365,13 @@ async fn try_submit_video(
     } else {
         status = "Incomplete";
     }
+
     let db_client = app_data.db.get().await.unwrap();
+    let sql = "SELECT num_parts FROM video WHERE id=$1";
+    let stmt = db_client.prepare_cached(&sql).await?;
+    let result = db_client.query_one(&stmt, &[&req.video_id]).await?;
+    let num_parts: i32 = result.get(0);
+
     let sql = r#"
         UPDATE video
         SET status = $14,
@@ -325,10 +388,10 @@ async fn try_submit_video(
             thumbnail_t=$10,
             highlight_start_t=$11,
             highlight_end_t=$12
-        WHERE id=$13 AND created_account_id=$1
+        WHERE id=$13 AND created_account_id=$1 AND next_part_num = num_parts
     "#;
     let stmt = db_client.prepare_cached(sql).await?;
-    let _ = db_client
+    let cnt = db_client
         .execute(
             &stmt,
             &[
@@ -349,7 +412,11 @@ async fn try_submit_video(
             ],
         )
         .await?;
-    info!("Submitted video");
+    if cnt == 1 {
+        info!("Submitted video: id={}", req.video_id);
+    } else {
+        bail!("Unexpected update row count: {} (upload may be incomplete?)", cnt);
+    }
 
     // Send messages to RabbitMQ to trigger processes to encode the thumbnail image, animated highlight, and full video.
     let mq = app_data.mq.get().await?;
@@ -358,6 +425,7 @@ async fn try_submit_video(
 
     let thumbnail_task = EncodingTask::ThumbnailImage {
         video_id: req.video_id,
+        num_parts,
         crop_center_x: req.crop_center_x,
         crop_center_y: req.crop_center_y,
         crop_size: req.crop_size,
@@ -375,6 +443,7 @@ async fn try_submit_video(
 
     let highlight_task = EncodingTask::HighlightAnimation {
         video_id: req.video_id,
+        num_parts,
         crop_center_x: req.crop_center_x,
         crop_center_y: req.crop_center_y,
         crop_size: req.crop_size,
@@ -393,6 +462,7 @@ async fn try_submit_video(
 
     let full_video_task = EncodingTask::FullVideo {
         video_id: req.video_id,
+        num_parts,
     };
     channel
         .basic_publish(
@@ -474,6 +544,11 @@ async fn try_edit_video(
         }
     }
 
+    let sql = "SELECT num_parts FROM video WHERE id=$1";
+    let stmt = db_client.prepare_cached(&sql).await?;
+    let result = db_client.query_one(&stmt, &[&req.video_id]).await?;
+    let num_parts: i32 = result.get(0);
+
     let sql = r#"
         UPDATE video
         SET updated_account_id=$2,
@@ -526,6 +601,7 @@ async fn try_edit_video(
 
     let thumbnail_task = EncodingTask::ThumbnailImage {
         video_id: req.video_id,
+        num_parts,
         crop_center_x: req.crop_center_x,
         crop_center_y: req.crop_center_y,
         crop_size: req.crop_size,
@@ -543,6 +619,7 @@ async fn try_edit_video(
 
     let highlight_task = EncodingTask::HighlightAnimation {
         video_id: req.video_id,
+        num_parts,
         crop_center_x: req.crop_center_x,
         crop_center_y: req.crop_center_y,
         crop_size: req.crop_size,
