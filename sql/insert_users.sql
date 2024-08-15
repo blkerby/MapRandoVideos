@@ -1,3 +1,3 @@
-INSERT INTO account (username, token, permission)
-VALUES ('user2', 'password2', 'default');
+INSERT INTO account (username, token_hash, permission)
+VALUES ('user', sha256('token'), 'Default');
 

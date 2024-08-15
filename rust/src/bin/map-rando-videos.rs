@@ -10,8 +10,10 @@ use log::{error, info};
 use map_rando_videos::{create_object_store, EncodingTask};
 use object_store::ObjectStore;
 use serde::{Deserialize, Serialize};
+use sha2::{Sha256, Digest};
 use core::str;
 use std::str::FromStr as _;
+use tokio::io::AsyncReadExt as _;
 use tokio::io::AsyncWriteExt as _;
 use tokio::join;
 use tokio_postgres::types::ToSql;
@@ -135,7 +137,7 @@ struct AccountInfo {
 async fn authenticate(app_data: web::Data<AppData>, auth: &BasicAuth) -> Result<AccountInfo> {
     let db_client = app_data.db.get().await.unwrap();
     let stmt = db_client
-        .prepare_cached("SELECT id, token, permission FROM account WHERE username=$1")
+        .prepare_cached("SELECT id, token_hash, permission FROM account WHERE username=$1")
         .await
         .context("preparing statement")?;
     let username = auth.user_id().to_owned();
@@ -144,9 +146,14 @@ async fn authenticate(app_data: web::Data<AppData>, auth: &BasicAuth) -> Result<
         None => bail!("user not found"),
         Some(row) => {
             let id: i32 = row.get("id");
-            let token: String = row.get("token");
+            let stored_token_hash: Vec<u8> = row.get("token_hash");
             let permission_str: String = row.get("permission");
-            if token == auth.password().unwrap_or("") {
+            
+            let mut hasher = Sha256::new();
+            hasher.update(auth.password().unwrap_or(""));
+            let presented_token_hash: Vec<u8> = hasher.finalize().to_vec();
+
+            if stored_token_hash == presented_token_hash {
                 let permission =
                     Permission::from_str(&permission_str).context("parsing permission")?;
                 Ok(AccountInfo { id, permission })
@@ -730,6 +737,43 @@ async fn delete_video(
     Ok(HttpResponse::Ok().body(""))
 }
 
+#[derive(Deserialize)]
+struct DownloadVideoRequest {
+    video_id: i32,
+    part_num: i32,
+}
+
+#[get("/download-video")]
+async fn download_video(
+    req: web::Query<DownloadVideoRequest>,
+    app_data: web::Data<AppData>,
+    auth: BasicAuth,
+) -> actix_web::Result<impl Responder> {
+    let _ = match authenticate(app_data.clone(), &auth).await {
+        Ok(ai) => ai,
+        Err(e) => {
+            error!("Failed authentication: {}", e);
+            return Err(actix_web::error::ErrorUnauthorized("Unauthorized"));
+        }
+    };
+
+    // TODO: Maybe figure out how to make this work by streaming the whole process
+    let object_path = format!("{}avi-xz/{}-{}.avi.xz", app_data.args.video_storage_prefix, req.video_id, req.part_num);
+    info!("downloading {}", object_path);
+    let xz_data = app_data.video_store.get(&object_store::path::Path::parse(&object_path)
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?)
+        .await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?
+        .bytes().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    info!("decompressing & recompressing {}", object_path);
+    let uncompressed = async_compression::tokio::bufread::XzDecoder::new(&*xz_data);
+    let buf_uncompressed = tokio::io::BufReader::new(uncompressed);
+    let mut gz_enc = async_compression::tokio::bufread::GzipEncoder::new(buf_uncompressed);
+    let mut output: Vec<u8> = vec![];
+    gz_enc.read_to_end(&mut output).await?;
+    info!("responding with recompressed {}", object_path);
+    Ok(HttpResponse::Ok().body(output))
+}
+
 #[derive(Serialize)]
 struct UserListing {
     id: i32,
@@ -782,11 +826,10 @@ struct ListVideosRequest {
 #[derive(Serialize, Deserialize, strum::EnumString, Debug)]
 enum VideoStatus {
     Pending,
-    New,
     Incomplete,
     Complete,
     Approved,
-    Archived,
+    Disabled,
 }
 
 #[derive(Serialize)]
@@ -945,6 +988,7 @@ struct GetVideoRequest {
 
 #[derive(Serialize)]
 struct GetVideoResponse {
+    num_parts: i32,
     room_id: Option<i32>,
     from_node_id: Option<i32>,
     to_node_id: Option<i32>,
@@ -967,6 +1011,7 @@ async fn get_video(
 ) -> actix_web::Result<impl Responder> {
     let sql = r#"
         SELECT 
+            num_parts,
             room_id,
             from_node_id,
             to_node_id,
@@ -998,6 +1043,7 @@ async fn get_video(
 
     let status_str: String = row.get("status");
     let response = GetVideoResponse {
+        num_parts: row.get("num_parts"),
         room_id: row.get("room_id"),
         from_node_id: row.get("from_node_id"),
         to_node_id: row.get("to_node_id"),
@@ -1188,6 +1234,7 @@ async fn main() {
             .service(get_video)
             .service(edit_video)
             .service(delete_video)
+            .service(download_video)
             .service(actix_files::Files::new("/js", "../js"))
             .service(actix_files::Files::new("/css", "../css"))
             .service(actix_files::Files::new("/static", "static"))

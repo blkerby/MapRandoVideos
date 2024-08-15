@@ -3,9 +3,11 @@
 // Maybe use some kind of modern framework and make it less of a mess?
 var frameOffsets = null;
 var animationEnabled = false;
+var animationDomPrefix = null;
 var animationFrameResolution = 3;
 var animationFrame = 0;
 var videoId = null;
+var numVideoParts = null;
 var startUploadKey = null;
 var finishUploadKey = null;
 var submitting = false;
@@ -22,7 +24,7 @@ function readSlice(file, start, size) {
     });
 }
 
-async function loadAVIMetadata(file) {
+async function loadAVIMetadata(file, localFrameOffsets) {
     var topDV = await readSlice(file, 0, 24);
     if (topDV.getUint32(0) != 0x52494646) { 
         return Promise.reject("bad header: RIFF");
@@ -131,7 +133,7 @@ async function loadAVIMetadata(file) {
         offset = idxDV.getUint32(pos + 8, true);
         size = idxDV.getUint32(pos + 12, true);
         if (chunkId == 0x62643030) {
-            frameOffsets.push([file, offset + moviStart + 8]);
+            localFrameOffsets.push([file, offset + moviStart + 8]);
             cnt += 1;
         }
         pos += 16;
@@ -164,16 +166,16 @@ function updateCanvas(canvas, rgbData, size, offsetX, offsetY) {
     ctx.putImageData(imageData, 0, 0);
 }
 
-async function updateAnimation() {
+async function updateAnimation(domIdPrefix) {
     if (frameOffsets == null) {
         return;
     }
-    var size = parseInt(document.getElementById("thumbnailSize").value);
-    var thumbnail = document.getElementById("thumbnail");
-    var startFrame = parseInt(document.getElementById("highlightStartTime").value);
-    var endFrame = parseInt(document.getElementById("highlightEndTime").value);
-    var thumbnailX = document.getElementById("thumbnailX");
-    var thumbnailY = document.getElementById("thumbnailY");
+    var size = parseInt(document.getElementById(domIdPrefix + "cropSize").value);
+    var thumbnail = document.getElementById(domIdPrefix + "thumbnail");
+    var startFrame = parseInt(document.getElementById(domIdPrefix + "highlightStartTime").value);
+    var endFrame = parseInt(document.getElementById(domIdPrefix + "highlightEndTime").value);
+    var thumbnailX = document.getElementById(domIdPrefix + "cropCenterX");
+    var thumbnailY = document.getElementById(domIdPrefix + "cropCenterY");
     var centerX = parseInt(thumbnailX.value);
     var centerY = parseInt(thumbnailY.value);
     var offsetX = centerX - Math.floor(size / 2);
@@ -190,21 +192,21 @@ async function updateAnimation() {
     animationFrame += animationFrameResolution;
 }
 
-async function updatePreview() {
+async function updatePreview(domIdPrefix) {
     if (frameOffsets == null) {
         return;
     }
-    var size = parseInt(document.getElementById("thumbnailSize").value);
-    var thumbnailX = document.getElementById("thumbnailX");
-    var thumbnailY = document.getElementById("thumbnailY");
+    var size = parseInt(document.getElementById(domIdPrefix + "cropSize").value);
+    var thumbnailX = document.getElementById(domIdPrefix + "cropCenterX");
+    var thumbnailY = document.getElementById(domIdPrefix + "cropCenterY");
     var centerX = parseInt(thumbnailX.value);
     var centerY = parseInt(thumbnailY.value);
     var offsetX = centerX - Math.floor(size / 2);
     var offsetY = centerY - Math.floor(size / 2);
 
     if (!animationEnabled) {
-        var thumbnail = document.getElementById("thumbnail");
-        var thumbnailTime = document.getElementById("thumbnailTime");
+        var thumbnail = document.getElementById(domIdPrefix + "thumbnail");
+        var thumbnailTime = document.getElementById(domIdPrefix + "thumbnailTime");
         if (thumbnailTime.value != "") {
             var t = parseInt(thumbnailTime.value);
             if (t > frameOffsets.length - 1) {
@@ -219,8 +221,8 @@ async function updatePreview() {
         }    
     }
 
-    var highlightStart = document.getElementById("highlightStart");
-    var highlightStartTime = document.getElementById("highlightStartTime");
+    var highlightStart = document.getElementById(domIdPrefix + "highlightStart");
+    var highlightStartTime = document.getElementById(domIdPrefix + "highlightStartTime");
     if (highlightStartTime.value != "") {
         var t = parseInt(highlightStartTime.value);
         if (t > frameOffsets.length - 1) {
@@ -234,8 +236,8 @@ async function updatePreview() {
         updateCanvas(highlightStart, rgbData, size, offsetX, offsetY);
     }
 
-    var highlightEnd = document.getElementById("highlightEnd");
-    var highlightEndTime = document.getElementById("highlightEndTime");
+    var highlightEnd = document.getElementById(domIdPrefix + "highlightEnd");
+    var highlightEndTime = document.getElementById(domIdPrefix + "highlightEndTime");
     if (highlightEndTime.value != "") {
         var t = parseInt(highlightEndTime.value);
         if (t > frameOffsets.length - 1) {
@@ -250,17 +252,21 @@ async function updatePreview() {
     }
 }
 
-async function updateControls() {
-    var size = parseInt(document.getElementById("thumbnailSize").value);
-    var thumbnailX = document.getElementById("thumbnailX");
-    var thumbnailY = document.getElementById("thumbnailY");
+async function updateControls(domIdPrefix) {
+    if (frameOffsets == null) {
+        return;
+    }
+    console.log("update controls");
+    var size = parseInt(document.getElementById(domIdPrefix + "cropSize").value);
+    var thumbnailX = document.getElementById(domIdPrefix + "cropCenterX");
+    var thumbnailY = document.getElementById(domIdPrefix + "cropCenterY");
     var centerX = parseInt(thumbnailX.value);
     var centerY = parseInt(thumbnailY.value);
 
     minThumbnailX = Math.floor(size / 2);
     maxThumbnailX = 256 - Math.floor(size / 2);
     minThumbnailY = Math.floor(size / 2);
-    maxThumbnailY = 224 - Math.floor(size / 2);
+    maxThumbnailY = 224 - Math.ceil(size / 2);
     thumbnailX.min = minThumbnailX;
     thumbnailX.max = maxThumbnailX;
     thumbnailY.min = minThumbnailY;
@@ -285,7 +291,7 @@ async function updateControls() {
         centerY = maxThumbnailY;
         thumbnailY.value = centerY;
     }
-    updatePreview();
+    updatePreview(domIdPrefix);
 }
 
 async function readFileChunks(file, chunkSize) {
@@ -323,18 +329,20 @@ async function updateFile() {
         return 0;
     });
 
-    frameOffsets = [];
+    var localFrameOffsets = [];
     for (const file of fileList) {
-        await loadAVIMetadata(file);
+        await loadAVIMetadata(file, localFrameOffsets);
     }
 
     document.getElementById("thumbnail").classList.remove("d-none");
     document.getElementById("highlightStart").classList.remove("d-none");
     document.getElementById("highlightEnd").classList.remove("d-none");
 
-    document.getElementById("thumbnailSize").value = 128;
-    document.getElementById("thumbnailX").value = 128;
-    document.getElementById("thumbnailY").value = 112;
+    document.getElementById("cropSize").value = 128;
+    document.getElementById("cropCenterX").value = 128;
+    document.getElementById("cropCenterY").value = 112;
+
+    frameOffsets = localFrameOffsets;
 
     var thumbnailTime = document.getElementById("thumbnailTime")
     thumbnailTime.value = 300;
@@ -348,7 +356,7 @@ async function updateFile() {
     highlightEndTime.value = 420;
     highlightEndTime.max = frameOffsets.length - 1;
 
-    updateControls();
+    updateControls('');
     var newVideoId = null;
     let username = localStorage.getItem("username");
     let token = localStorage.getItem("token");
@@ -470,20 +478,21 @@ async function updateStratOptions(roomDomId, stratDomId, fromDomId, toDomId) {
     }
 }
 
-function enableAnimation() {
+function enableAnimation(domIdPrefix) {
     animationEnabled = true;
+    animationDomPrefix = domIdPrefix;
 }
 
-function disableAnimation() {
+function disableAnimation(domIdPrefix) {
     animationEnabled = false;
-    updatePreview();
+    updatePreview(domIdPrefix);
 }
 
 async function animateLoop() {
     while (true) {
         await new Promise(r => setTimeout(r, 1000 / 60 * animationFrameResolution));
         if (animationEnabled) {
-            updateAnimation();
+            updateAnimation(animationDomPrefix);
         }
     }
 }
@@ -685,6 +694,8 @@ async function updateFilter() {
     // If we add a lot of videos, consider dynamically loading the table rows as the user scrolls down.
     req.limit = 10000;
 
+    frameOffsets = null;
+
     let params = new URLSearchParams(req).toString();
     let result = await fetch(`/list-videos?${params}`);
     if (!result.ok) {
@@ -701,10 +712,9 @@ async function updateFilter() {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
-        hour12: 'false',
+        hour12: false,
         hour: 'numeric',
         minute: '2-digit',
-        timeZoneName: 'short',
     });
     for (const video of videoList) {
         let tr = document.createElement('tr');
@@ -743,7 +753,7 @@ async function updateFilter() {
         imgA.appendChild(webpEl);
 
         let textCol = document.createElement('div');
-        textCol.classList.add("col-sm-6");
+        textCol.classList.add("col-sm-8");
         textCol.classList.add("col-md-7");
         textCol.classList.add("col-lg-8");
 
@@ -803,13 +813,15 @@ async function updateFilter() {
         }
 
         let shareCol = document.createElement('div');
-        shareCol.classList.add("col-sm-2");
+        shareCol.classList.add("col-md-2");
         shareCol.classList.add("text-end");
 
         let shareButton = document.createElement('button');
         shareButton.classList.add("btn");
         shareButton.classList.add("btn-secondary");
-        shareButton.classList.add("my-1")
+        shareButton.classList.add("my-1");
+        shareButton.classList.add("mx-1");
+        shareButton.classList.add("mx-md-0")
         shareButton.setAttribute("onclick", `shareVideoLink(this, ${video.id})`);
         shareButton.innerHTML = '<i class="bi bi-clipboard"></i> Share';
         shareCol.appendChild(shareButton);
@@ -818,7 +830,9 @@ async function updateFilter() {
             let editButton = document.createElement('button');
             editButton.classList.add("btn");
             editButton.classList.add("btn-success");
-            editButton.classList.add("my-1")
+            editButton.classList.add("my-1");
+            editButton.classList.add("mx-1");
+            editButton.classList.add("mx-md-0")
             editButton.setAttribute("onclick", `openEditVideo(${video.id})`);
             // editButton.setAttribute("data-bs-toggle", "modal");
             // editButton.setAttribute("data-bs-target", "#editModal");
@@ -840,8 +854,60 @@ async function updateFilter() {
     }
 }
 
-async function editShowPreview(video_id) {
+async function downloadVideos() {
+    // Download the video parts into OPFS as /0.avi, /1.avi, etc.
+    console.log("storage:" + (await navigator.storage.estimate()).quota);
+    let username = localStorage.getItem("username");
+    let token = localStorage.getItem("token");
+    let dir = await navigator.storage.getDirectory();
+    var fileList = [];
+    for (var i = 0; i < numVideoParts; i++) {
+        var start = performance.now();
+        let response = await fetch(
+            `/download-video?video_id=${videoId}&part_num=${i}`, {
+                headers: {
+                    "Authorization": 'Basic ' + btoa(username + ":" + token),
+                }
+            });
+        const ds = new DecompressionStream("gzip");
+        const decompressedStream = response.body.pipeThrough(ds);
 
+        const filename = `${i}.avi`;
+        const file = await dir.getFileHandle(filename, {create: true});
+        const writableStream = await file.createWritable();
+        await decompressedStream.pipeTo(writableStream);
+        fileList.push(await file.getFile());
+        var elapsedTime = performance.now() - start;
+        console.log(`finished download part ${i}: elapsed time (ms)=${elapsedTime}`);
+    }
+
+    // Parse the AVI metadata:
+    let localFrameOffsets = [];
+    for (var i = 0; i < numVideoParts; i++) {
+        await loadAVIMetadata(fileList[i], localFrameOffsets);
+    }
+    frameOffsets = localFrameOffsets;
+}
+
+async function editShowPreview() {
+    console.log(`${videoId}: ${numVideoParts}`);
+    await downloadVideos();
+
+    var thumbnailTime = document.getElementById("edit-thumbnailTime")
+    thumbnailTime.max = frameOffsets.length - 1;
+    console.log("max: " + thumbnailTime.max);
+
+    var highlightStartTime = document.getElementById("edit-highlightStartTime")
+    highlightStartTime.max = frameOffsets.length - 1;
+
+    var highlightEndTime = document.getElementById("edit-highlightEndTime")
+    highlightEndTime.max = frameOffsets.length - 1;
+
+    document.getElementById("edit-show-preview").classList.add("d-none");
+    document.getElementById("edit-preview").classList.remove("d-none");
+    updatePreview('edit-');
+    bootstrap.Modal.getInstance(document.getElementById("downloadingModal")).hide();
+    bootstrap.Modal.getInstance(document.getElementById("editModal")).show();
 }
 
 function shareVideoLink(el, id) {
@@ -880,22 +946,22 @@ async function openEditVideo(id) {
     let note = document.getElementById("editNote");
     note.value = video.note;
 
-    let cropSize = document.getElementById("editCropSize");
+    let cropSize = document.getElementById("edit-cropSize");
     cropSize.value = video.crop_size;
 
-    let cropCenterX = document.getElementById("editCropCenterX");
+    let cropCenterX = document.getElementById("edit-cropCenterX");
     cropCenterX.value = video.crop_center_x;
 
-    let cropCenterY = document.getElementById("editCropCenterY");
+    let cropCenterY = document.getElementById("edit-cropCenterY");
     cropCenterY.value = video.crop_center_y;
 
-    let thumbnailT = document.getElementById("editThumbnailTime");
+    let thumbnailT = document.getElementById("edit-thumbnailTime");
     thumbnailT.value = video.thumbnail_t;
 
-    let highlightStartT = document.getElementById("editHighlightStartTime");
+    let highlightStartT = document.getElementById("edit-highlightStartTime");
     highlightStartT.value = video.highlight_start_t;
 
-    let highlightEndT = document.getElementById("editHighlightEndTime");
+    let highlightEndT = document.getElementById("edit-highlightEndTime");
     highlightEndT.value = video.highlight_end_t;
 
     let status = document.getElementById("editStatus");
@@ -904,6 +970,10 @@ async function openEditVideo(id) {
 
     var form = document.getElementById("editForm");
     form.classList.remove('was-validated');
+
+    numVideoParts = video.num_parts;
+    document.getElementById("edit-show-preview").classList.remove("d-none");
+    document.getElementById("edit-preview").classList.add("d-none");
 
     if (video.permanent) {
         document.getElementById("deleteVideoButton").classList.add("d-none");
@@ -937,12 +1007,12 @@ async function submitEditVideo() {
         to_node_id: tryParseInt(document.getElementById("editToNode").value),
         strat_id: tryParseInt(document.getElementById("editStrat").value),
         note: document.getElementById("editNote").value,
-        crop_size: tryParseInt(document.getElementById("editCropSize").value),
-        crop_center_x: tryParseInt(document.getElementById("editCropCenterX").value),
-        crop_center_y: tryParseInt(document.getElementById("editCropCenterY").value),
-        thumbnail_t: tryParseInt(document.getElementById("editThumbnailTime").value),
-        highlight_start_t: tryParseInt(document.getElementById("editHighlightStartTime").value),
-        highlight_end_t: tryParseInt(document.getElementById("editHighlightEndTime").value),
+        crop_size: tryParseInt(document.getElementById("edit-cropSize").value),
+        crop_center_x: tryParseInt(document.getElementById("edit-cropCenterX").value),
+        crop_center_y: tryParseInt(document.getElementById("edit-cropCenterY").value),
+        thumbnail_t: tryParseInt(document.getElementById("edit-thumbnailTime").value),
+        highlight_start_t: tryParseInt(document.getElementById("edit-highlightStartTime").value),
+        highlight_end_t: tryParseInt(document.getElementById("edit-highlightEndTime").value),
     };
     var json = JSON.stringify(req);
 

@@ -59,30 +59,30 @@
                         <div class="col-4">
                             <div class="row">
                                 <div class="col-lg-6 text-lg-end">
-                                    <label for="editCropSize" class="col-form-label">Crop size</label>
+                                    <label for="edit-cropSize" class="col-form-label">Crop size</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="editCropSize" type="number" class="form-control" value="" min="64" max="224" onchange="updateControls()" autocomplete="off">
+                                    <input id="edit-cropSize" type="number" class="form-control" value="" min="64" max="224" onchange="updateControls('edit-')" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
                         <div class="col-4">
                             <div class="row">
                                 <div class="col-lg-6 text-lg-end">
-                                    <label for="editCropCenterX" class="col-form-label">Crop center X</label>
+                                    <label for="edit-cropCenterX" class="col-form-label">Crop center X</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="editCropCenterX" type="number" class="form-control" value="" onchange="updateControls()" autocomplete="off">
+                                    <input id="edit-cropCenterX" type="number" class="form-control" value="" onchange="updateControls('edit-')" autocomplete="off">
                                 </div>
                             </div>
                         </div>
                         <div class="col-4">
                             <div class="row">
                                 <div class="col-lg-6 text-lg-end">
-                                    <label for="editCropCenterY" class="col-form-label">Crop center Y</label>
+                                    <label for="edit-cropCenterY" class="col-form-label">Crop center Y</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="editCropCenterY" type="number" class="form-control" value="" onchange="updateControls()" autocomplete="off">
+                                    <input id="edit-cropCenterY" type="number" class="form-control" value="" onchange="updateControls('edit-')" autocomplete="off">
                                 </div>
                             </div>
                         </div>
@@ -91,46 +91,46 @@
                         <div class="col-4">
                             <div class="row">
                                 <div class="col-lg-6 text-lg-end">
-                                    <label for="editThumbnailTime" class="col-form-label">Static time</label>
+                                    <label for="edit-thumbnailTime" class="col-form-label">Static time</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="editThumbnailTime" type="number" class="form-control" min="0" onchange="updateControls()" autocomplete="off">
+                                    <input id="edit-thumbnailTime" type="number" class="form-control" min="0" onchange="updateControls('edit-')" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
                         <div class="col-4">
                             <div class="row">
                                 <div class="col-lg-6 text-lg-end">
-                                    <label for="editHighlightStartTime" class="col-form-label">Animate start</label>
+                                    <label for="edit-highlightStartTime" class="col-form-label">Animate start</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="editHighlightStartTime" type="number" class="form-control" min="0" onchange="updateControls()" autocomplete="off">
+                                    <input id="edit-highlightStartTime" type="number" class="form-control" min="0" onchange="updateControls('edit-')" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
                         <div class="col-4">
                             <div class="row">
                                 <div class="col-lg-6 text-lg-end">
-                                    <label for="editHighlightEndTime" class="col-form-label">Animate end</label>
+                                    <label for="edit-highlightEndTime" class="col-form-label">Animate end</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="editHighlightEndTime" type="number" class="form-control" min="0" onchange="updateControls()" autocomplete="off">
+                                    <input id="edit-highlightEndTime" type="number" class="form-control" min="0" onchange="updateControls('edit-')" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
                     </div>
-                    <div class="text-center mt-2">
-                        <button type="button" class="btn btn-secondary" onclick="editShowPreview()">Show preview</button>
+                    <div id="edit-show-preview" class="text-center mt-2">
+                        <button type="button" class="btn btn-secondary" onclick="editShowPreview()" data-bs-toggle="modal" data-bs-target="#downloadingModal">Show preview</button>
                     </div>
-                    <div class="row my-2 d-none" onmouseenter="enableAnimation()" onmouseleave="disableAnimation()">
+                    <div id="edit-preview" class="row my-2 d-none" onmouseenter="enableAnimation('edit-')" onmouseleave="disableAnimation('edit-')">
                         <div class="col-4 d-flex align-items-center justify-content-center">
-                            <canvas id="editThumbnail" class="d-none" width="224" height="224" style="height:128px"></canvas>
+                            <canvas id="edit-thumbnail" width="224" height="224" style="height:128px"></canvas>
                         </div>                        
                         <div class="col-4 d-flex align-items-center justify-content-center">
-                            <canvas id="editHighlightStart" class="d-none" width="224" height="224" style="height:128px"></canvas>
+                            <canvas id="edit-highlightStart" width="224" height="224" style="height:128px"></canvas>
                         </div>                        
                         <div class="col-4 d-flex align-items-center justify-content-center">
-                            <canvas id="editHighlightEnd" class="d-none" width="224" height="224" style="height:128px"></canvas>
+                            <canvas id="edit-highlightEnd" width="224" height="224" style="height:128px"></canvas>
                         </div>                        
                     </div>
                     <div class="row my-2">
@@ -167,6 +167,21 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-danger" onclick="deleteVideo()" data-bs-dismiss="modal">Yes</button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal" id="downloadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5">Downloading video</h1>
+            </div>
+            <div class="modal-body">
+                <p>Please wait while the video downloads. This could take a few minutes.</p>
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                </div>
             </div>
         </div>
     </div>

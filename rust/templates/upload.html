@@ -67,30 +67,30 @@
                         <div class="col-4">
                             <div class="row">
                                 <div class="col-lg-6 text-lg-end">
-                                    <label for="thumbnailSize" class="col-form-label">Crop size</label>
+                                    <label for="cropSize" class="col-form-label">Crop size</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailSize" type="number" class="form-control" name="crop_size" value="" min="64" max="224" onchange="updateControls()" autocomplete="off">
+                                    <input id="cropSize" type="number" class="form-control" name="crop_size" value="" min="64" max="224" onchange="updateControls('')" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
                         <div class="col-4">
                             <div class="row">
                                 <div class="col-lg-6 text-lg-end">
-                                    <label for="thumbnailX" class="col-form-label">Crop center X</label>
+                                    <label for="cropCenterX" class="col-form-label">Crop center X</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailX" type="number" class="form-control" name="crop_center_x" value="" onchange="updateControls()" autocomplete="off">
+                                    <input id="cropCenterX" type="number" class="form-control" name="crop_center_x" value="" onchange="updateControls('')" autocomplete="off">
                                 </div>
                             </div>
                         </div>
                         <div class="col-4">
                             <div class="row">
                                 <div class="col-lg-6 text-lg-end">
-                                    <label for="thumbnailY" class="col-form-label">Crop center Y</label>
+                                    <label for="cropCenterY" class="col-form-label">Crop center Y</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailY" type="number" class="form-control" name="crop_center_y" value="" onchange="updateControls()" autocomplete="off">
+                                    <input id="cropCenterY" type="number" class="form-control" name="crop_center_y" value="" onchange="updateControls('')" autocomplete="off">
                                 </div>
                             </div>
                         </div>
@@ -102,7 +102,7 @@
                                     <label for="thumbnailTime" class="col-form-label">Static time</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="thumbnailTime" type="number" class="form-control" name="thumbnail_t" min="0" onchange="updateControls()" autocomplete="off">
+                                    <input id="thumbnailTime" type="number" class="form-control" name="thumbnail_t" min="0" onchange="updateControls('')" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
@@ -112,7 +112,7 @@
                                     <label for="highlightStartTime" class="col-form-label">Animate start</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="highlightStartTime" type="number" class="form-control" name="highlight_start_t" min="0" onchange="updateControls()" autocomplete="off">
+                                    <input id="highlightStartTime" type="number" class="form-control" name="highlight_start_t" min="0" onchange="updateControls('')" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
@@ -122,12 +122,12 @@
                                     <label for="highlightEndTime" class="col-form-label">Animate end</label>
                                 </div>
                                 <div class="col-lg-6">
-                                    <input id="highlightEndTime" type="number" class="form-control" name="highlight_end_t" min="0" onchange="updateControls()" autocomplete="off">
+                                    <input id="highlightEndTime" type="number" class="form-control" name="highlight_end_t" min="0" onchange="updateControls('')" autocomplete="off">
                                 </div>
                             </div>
                         </div>                        
                     </div>
-                    <div class="row my-2" onmouseenter="enableAnimation()" onmouseleave="disableAnimation()">
+                    <div class="row my-2" onmouseenter="enableAnimation('')" onmouseleave="disableAnimation('')">
                         <div class="col-4 d-flex align-items-center justify-content-center">
                             <canvas id="thumbnail" class="d-none" width="224" height="224" style="height:128px"></canvas>
                         </div>                        

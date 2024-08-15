@@ -1,11 +1,9 @@
 CREATE TABLE account (
     id serial primary key,
     username varchar(100) NOT NULL,
-    token varchar(100) NOT NULL,
-    discord_username varchar(100),
+    token_hash bytea NOT NULL,
     permission varchar(100) NOT NULL,
-    created timestamp default current_timestamp,
-    login_ts timestamp
+    created_ts timestamptz default current_timestamp
 );
 
 CREATE TABLE video (
