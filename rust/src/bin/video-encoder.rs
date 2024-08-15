@@ -106,13 +106,11 @@ async fn feed_part_to_pipe(part_num: i32) -> Result<()> {
     let pipe_path = format!("/tmp/video-{}.pipe", part_num);
     let mut pipe = tokio::fs::OpenOptions::new().write(true).open(pipe_path).await?;
     let mut buf = vec![0u8; 65536];
-    let mut total_n = 0;
     loop {
         let n = uncompressed_input.read(&mut buf).await?;
         if n == 0 {
             break;
         }
-        total_n += n;
         if pipe.write_all(&buf[..n]).await.is_err() {
             // We ignore errors writing to the pipe.
             // A broken pipe is expected since ffmpeg closes the input before reading to the end.
@@ -229,6 +227,8 @@ async fn encode_highlight(
         .arg("libwebp_anim")
         .arg("-lossless")
         .arg("1")
+        .arg("-loop")
+        .arg("0")
         .arg(output_path)
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())

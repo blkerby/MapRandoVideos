@@ -13,11 +13,14 @@ COPY /rust/templates /rust/templates
 RUN cargo build --release
 
 # Now restart with a slim base image and just copy over the binary and data needed at runtime.
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 RUN apt-get update && apt-get install -y \
-    libssl1.1 \
+    libssl1.1 ffmpeg ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=build /rust/target/release/map-rando-videos /
+COPY --from=build /rust/target/release/map-rando-videos /bin/map-rando-videos
+COPY --from=build /rust/target/release/video-encoder /bin/video-encoder
+COPY --from=build /rust/target/release/sm-json-data-updater /bin/sm-json-data-updater
 COPY /js /js
-WORKDIR /
-ENTRYPOINT ["/map-rando-videos"]
+COPY /static /static
+WORKDIR /bin
+ENTRYPOINT ["/bin/map-rando-videos"]

@@ -39,8 +39,6 @@ struct Args {
     #[arg(long, env)]
     rabbit_queue: String,
     #[arg(long, env)]
-    sm_json_data_summary_url: String,
-    #[arg(long, env)]
     video_storage_bucket_url: String,
     #[arg(long, env)]
     video_storage_prefix: String,
@@ -80,6 +78,7 @@ async fn build_app_data() -> AppData {
             tokio_postgres::NoTls,
         )
         .unwrap();
+
     // Get a test connection, to fail now in case we can't connect to the database.
     let _ = db_pool.get().await.unwrap();
 
@@ -540,6 +539,10 @@ async fn try_edit_video(
             // Editors are authorized to edit any video, so no check needed.
         }
         Permission::Default => {
+            if req.status == VideoStatus::Approved {
+                bail!("Not authorized to set this video as Approved");
+            }
+
             let sql = "SELECT updated_account_id FROM video WHERE id=$1";
             let stmt = db_client.prepare_cached(&sql).await?;
             let row = db_client.query_one(&stmt, &[&req.video_id]).await?;
@@ -823,7 +826,7 @@ struct ListVideosRequest {
     offset: Option<i64>,
 }
 
-#[derive(Serialize, Deserialize, strum::EnumString, Debug)]
+#[derive(Serialize, Deserialize, strum::EnumString, Debug, Eq, PartialEq)]
 enum VideoStatus {
     Pending,
     Incomplete,
@@ -1236,8 +1239,7 @@ async fn main() {
             .service(delete_video)
             .service(download_video)
             .service(actix_files::Files::new("/js", "../js"))
-            .service(actix_files::Files::new("/css", "../css"))
-            .service(actix_files::Files::new("/static", "static"))
+            .service(actix_files::Files::new("/static", "../static"))
     })
     .bind("0.0.0.0:8081")
     .unwrap()

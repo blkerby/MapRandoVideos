@@ -13,11 +13,11 @@ use tokio_postgres::{
 
 #[derive(Parser)]
 struct Args {
-    #[arg(long)]
+    #[arg(long, env)]
     git_repo_url: String,
-    #[arg(long)]
+    #[arg(long, env)]
     git_repo_branch: String,
-    #[arg(long)]
+    #[arg(long, env)]
     git_repo_local_path: String,
     #[arg(long, env)]
     postgres_host: String,

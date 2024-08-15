@@ -975,6 +975,13 @@ async function openEditVideo(id) {
     document.getElementById("edit-show-preview").classList.remove("d-none");
     document.getElementById("edit-preview").classList.add("d-none");
 
+    let permission = localStorage.getItem("permission");
+    if (permission != "Editor") {
+        document.getElementById("editStatusApproved").classList.add("d-none");
+    } else {
+        document.getElementById("editStatusApproved").classList.remove("d-none");
+    }
+
     if (video.permanent) {
         document.getElementById("deleteVideoButton").classList.add("d-none");
     } else {
