@@ -748,9 +748,12 @@ async function updateFilter() {
         let webpEl = document.createElement('img');
         webpEl.classList.add("webp");
         webpEl.loading = "lazy";
-        webpEl.src = videoStorageClientUrl + "/webp/" + video.id + ".webp";
+        webpEl.src = videoStorageClientUrl + "/png/" + video.id + ".png";
         webpEl.style = "width:128px;";
         imgA.appendChild(webpEl);
+        row.addEventListener("mouseover", function() {
+            webpEl.src = videoStorageClientUrl + "/webp/" + video.id + ".webp";
+        });
 
         let textCol = document.createElement('div');
         textCol.classList.add("col-sm-8");
@@ -913,7 +916,7 @@ async function editShowPreview() {
 function shareVideoLink(el, id) {
     let oldHTML = el.innerHTML;
     el.innerHTML = '<i class="bi bi-check2"></i> Copied';
-    let link = window.location.origin + "?video_id=" + id;
+    let link = window.location.origin + "/video/" + id;
     navigator.clipboard.writeText(link);
     setTimeout(function(){
         el.innerHTML = oldHTML;

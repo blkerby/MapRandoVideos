@@ -128,6 +128,21 @@ async fn home(app_data: web::Data<AppData>, query: web::Query<HomeQuery>) -> imp
     HttpResponse::Ok().body(home_template.render().unwrap())
 }
 
+
+#[get("/video/{video_id}")]
+async fn video_html(app_data: web::Data<AppData>, video_id: web::Path<i32>) -> impl Responder {
+    let home_template = HomeTemplate {
+        video_storage_client_url: app_data.args.video_storage_client_url.clone(),
+        video_id: Some(*video_id),
+        video_statuses: vec!["Incomplete", "Complete", "Approved", "Disabled"]
+            .into_iter()
+            .map(|x| x.to_string())
+            .collect(),
+    };
+    HttpResponse::Ok().body(home_template.render().unwrap())
+}
+
+
 struct AccountInfo {
     id: i32,
     permission: Permission,
@@ -1226,6 +1241,7 @@ async fn main() {
             .wrap(Compress::default())
             .wrap(Logger::default())
             .service(home)
+            .service(video_html)
             .service(sign_in)
             .service(upload_video)
             .service(submit_video)
