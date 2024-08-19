@@ -922,11 +922,7 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
         param_values.push(req.video_id.as_ref().unwrap());
     }
     if req.user_id.is_some() {
-        sql_filters.push(format!(
-            "(v.created_account_id = ${} OR v.updated_account_id = ${})",
-            param_values.len() + 1,
-            param_values.len() + 1
-        ));
+        sql_filters.push(format!("v.created_account_id = ${}", param_values.len() + 1));
         param_values.push(req.user_id.as_ref().unwrap());
     }
     sql_filters.push(format!(
