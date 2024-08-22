@@ -133,7 +133,7 @@ async function loadAVIMetadata(file, localFrameOffsets) {
         offset = idxDV.getUint32(pos + 8, true);
         size = idxDV.getUint32(pos + 12, true);
         if (chunkId == 0x62643030) {
-            localFrameOffsets.push([file, offset + moviStart + 20]);
+            localFrameOffsets.push([file, offset + moviStart + 17]);
             cnt += 1;
         }
         pos += 16;
