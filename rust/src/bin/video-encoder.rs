@@ -8,7 +8,7 @@ use futures::{future::join_all, StreamExt};
 use lapin::options::BasicQosOptions;
 use log::info;
 use map_rando_videos::{create_object_store, EncodingTask};
-use object_store::{path::Path, ObjectStore};
+use object_store::{path::Path, AttributeValue, ObjectStore, PutOptions, TagSet};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Parser)]
@@ -180,9 +180,16 @@ async fn encode_thumbnail(
     // Write the output thumbnail to object storage:
     let output_data = std::fs::read(output_path)?;
     let output_key = object_store::path::Path::parse(format!("png/{}.png", video_id))?;
+    let mut attrs = object_store::Attributes::new();
+    attrs.insert(object_store::Attribute::ContentType, "image/png".into());
+    let put_opts = PutOptions {
+        mode: object_store::PutMode::Overwrite,
+        tags: object_store::TagSet::default(),
+        attributes: attrs,
+    };
     app_data
         .video_store
-        .put(&output_key, output_data.into())
+        .put_opts(&output_key, output_data.into(), put_opts)
         .await?;
 
     // Update the `thumbnail_processed_ts` in the database:
@@ -247,9 +254,16 @@ async fn encode_highlight(
     // Write the output highlight to object storage:
     let output_data = std::fs::read(output_path)?;
     let output_key = object_store::path::Path::parse(format!("webp/{}.webp", video_id))?;
+    let mut attrs = object_store::Attributes::new();
+    attrs.insert(object_store::Attribute::ContentType, "image/webp".into());
+    let put_opts = PutOptions {
+        mode: object_store::PutMode::Overwrite,
+        tags: object_store::TagSet::default(),
+        attributes: attrs,
+    };
     app_data
         .video_store
-        .put(&output_key, output_data.into())
+        .put_opts(&output_key, output_data.into(), put_opts)
         .await?;
 
     // Update the `highlight_processed_ts` in the database:
@@ -310,9 +324,16 @@ async fn encode_full_video(
     // Write the output mp4 to object storage:
     let output_data = std::fs::read(output_path)?;
     let output_key = object_store::path::Path::parse(format!("mp4/{}.mp4", video_id))?;
+    let mut attrs = object_store::Attributes::new();
+    attrs.insert(object_store::Attribute::ContentType, "video/mp4".into());
+    let put_opts = PutOptions {
+        mode: object_store::PutMode::Overwrite,
+        tags: object_store::TagSet::default(),
+        attributes: attrs,
+    };
     app_data
         .video_store
-        .put(&output_key, output_data.into())
+        .put_opts(&output_key, output_data.into(), put_opts)
         .await?;
 
     // Update the `full_video_processed_ts` in the database:
