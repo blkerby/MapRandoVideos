@@ -140,7 +140,7 @@ async function loadAVIMetadata(file, localFrameOffsets) {
     }
 
     if (totalFrames != cnt) {
-        return Promise.reject(`index video frame count ${cnt} does not match total frame count ${totalFrames}`);
+        console.log(`index video frame count ${cnt} does not match total frame count ${totalFrames}`);
     }
 
     console.log(`Loaded video header: ${width} x ${height}, ${fps} fps, ${totalFrames} frames`);
@@ -256,7 +256,6 @@ async function updateControls(domIdPrefix) {
     if (frameOffsets == null) {
         return;
     }
-    console.log("update controls");
     var size = parseInt(document.getElementById(domIdPrefix + "cropSize").value);
     var thumbnailX = document.getElementById(domIdPrefix + "cropCenterX");
     var thumbnailY = document.getElementById(domIdPrefix + "cropCenterY");
@@ -340,7 +339,7 @@ async function updateFile() {
 
     document.getElementById("cropSize").value = 128;
     document.getElementById("cropCenterX").value = 128;
-    document.getElementById("cropCenterY").value = 112;
+    document.getElementById("cropCenterY").value = 128;
 
     frameOffsets = localFrameOffsets;
 
