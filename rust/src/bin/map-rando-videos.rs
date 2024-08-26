@@ -1,5 +1,5 @@
 use actix_web::{
-    self, delete, get, http::StatusCode, middleware::{Compress, Logger}, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder
+    self, delete, error::ErrorNotFound, get, http::StatusCode, middleware::{Compress, Logger}, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder
 };
 use actix_web_httpauth::extractors::basic::BasicAuth;
 use anyhow::{bail, Context, Result};
@@ -59,6 +59,7 @@ struct AppData {
 #[template(path = "home.html")]
 struct HomeTemplate {
     video_storage_client_url: String,
+    og_title: Option<String>,
     video_id: Option<i32>,
     video_statuses: Vec<String>,
 }
@@ -120,26 +121,57 @@ async fn home(app_data: web::Data<AppData>, query: web::Query<HomeQuery>) -> imp
     let home_template = HomeTemplate {
         video_storage_client_url: app_data.args.video_storage_client_url.clone(),
         video_id: query.video_id,
+        og_title: None,
         video_statuses: vec!["Incomplete", "Complete", "Approved", "Disabled"]
             .into_iter()
             .map(|x| x.to_string())
             .collect(),
     };
-    HttpResponse::Ok().body(home_template.render().unwrap())
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(home_template.render().unwrap())
 }
 
 
 #[get("/video/{video_id}")]
-async fn video_html(app_data: web::Data<AppData>, video_id: web::Path<i32>) -> impl Responder {
+async fn video_html(app_data: web::Data<AppData>, video_id: web::Path<i32>) -> actix_web::Result<impl Responder> {
+    let sql = r#"
+        SELECT 
+            r.name as room_name,
+            s.name as strat_name
+        FROM video v
+        LEFT JOIN room r ON r.room_id = v.room_id
+        LEFT JOIN strat s ON s.room_id = v.room_id AND s.strat_id = v.strat_id
+        WHERE v.id = $1
+    "#;
+    let db = app_data.db.get().await.unwrap();
+    let stmt = db.prepare_cached(&sql).await.unwrap();
+    let row = db.query_one(&stmt, &[&*video_id]).await.map_err(|e| ErrorNotFound(e))?;
+
+    let room_name: Option<String> = row.get("room_name");
+    let strat_name: Option<String> = row.get("strat_name");
+    let og_title = if room_name.is_some() && strat_name.is_some() {
+        Some(format!("{}: {}", room_name.unwrap(), strat_name.unwrap()))
+    } else if room_name.is_some() {
+        room_name
+    } else if strat_name.is_some() {
+        strat_name
+    } else {
+        None
+    };
+
     let home_template = HomeTemplate {
         video_storage_client_url: app_data.args.video_storage_client_url.clone(),
         video_id: Some(*video_id),
+        og_title,
         video_statuses: vec!["Incomplete", "Complete", "Approved", "Disabled"]
             .into_iter()
             .map(|x| x.to_string())
             .collect(),
     };
-    HttpResponse::Ok().body(home_template.render().unwrap())
+    Ok(HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(home_template.render().unwrap()))
 }
 
 

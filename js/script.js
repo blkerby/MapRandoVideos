@@ -748,6 +748,7 @@ async function updateFilter() {
         webpEl.classList.add("webp");
         webpEl.loading = "lazy";
         webpEl.src = videoStorageClientUrl + "/webp/" + video.id + ".webp";
+        webpEl.fetchPriority = "low";
         webpEl.style = "width:128px;";
         imgA.appendChild(webpEl);
 

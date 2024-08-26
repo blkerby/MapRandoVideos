@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=build /rust/target/release/map-rando-videos /bin/map-rando-videos
 COPY --from=build /rust/target/release/video-encoder /bin/video-encoder
 COPY --from=build /rust/target/release/sm-json-data-updater /bin/sm-json-data-updater
+COPY --from=build /rust/target/release/trigger-encode-all /bin/trigger-encode-all
 COPY /js /js
 COPY /static /static
 WORKDIR /bin

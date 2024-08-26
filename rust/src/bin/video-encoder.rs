@@ -1,5 +1,5 @@
 use std::{
-    fs::File, io::Write, ops::Deref, process::{Command, Stdio}, thread
+    fs::File, io::Write, ops::Deref, process::{Command, Stdio}
 };
 
 use anyhow::{bail, Result};
@@ -8,7 +8,7 @@ use futures::{future::join_all, StreamExt};
 use lapin::options::BasicQosOptions;
 use log::info;
 use map_rando_videos::{create_object_store, EncodingTask};
-use object_store::{path::Path, AttributeValue, ObjectStore, PutOptions, TagSet};
+use object_store::{path::Path, ObjectStore, PutOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Parser)]
