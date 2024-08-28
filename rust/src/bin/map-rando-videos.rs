@@ -527,6 +527,14 @@ async fn try_submit_video(
         )
         .await?;
 
+    // Set the user account to active so it will show in the user listing:
+    let sql = "UPDATE account SET active = TRUE WHERE id = $1";
+    let stmt = db_client.prepare_cached(sql).await?;
+    let cnt = db_client.execute(&stmt, &[&account_info.id]).await?;
+    if cnt != 1 {
+        bail!("Error updating account 'active'");
+    }
+
     Ok(())
 }
 
@@ -832,7 +840,7 @@ struct UserListing {
 
 async fn try_list_users(app_data: web::Data<AppData>) -> Result<Vec<UserListing>> {
     let db_client = app_data.db.get().await.unwrap();
-    let sql = "SELECT id, username FROM account";
+    let sql = "SELECT id, username FROM account WHERE active";
     let stmt = db_client.prepare_cached(sql).await?;
     let result = db_client.query(&stmt, &[]).await?;
     let mut out = vec![];
