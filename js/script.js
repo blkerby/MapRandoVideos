@@ -98,23 +98,16 @@ async function loadAVIMetadata(file, localFrameOffsets) {
         return Promise.reject(`unexpected compression: ${compression}`);
     }
 
-    var postHeaderStart = headerListStart + headerListSize;
-    var postHeaderDV = await readSlice(file, postHeaderStart, 12);
-    var moviStart;
-    if (postHeaderDV.getUint32(0) == 0x4A554E4B) {
-        junkSize = postHeaderDV.getUint32(4, true);
-        moviStart = postHeaderStart + 8 + junkSize;
-    } else {
-        moviStart = postHeaderStart;
+    var moviStart = headerListStart + headerListSize;
+    var moviDV = await readSlice(file, moviStart, 12);
+    
+    while (moviDV.getUint32(0) != 0x4C495354 || moviDV.getUint32(8) != 0x6D6F7669) {
+        // Skip over irrelevant chunks before we get to the "movi" chunk
+        junkSize = moviDV.getUint32(4, true);
+        moviStart += junkSize + 8;
+        moviDV = await readSlice(file, moviStart, 12);
     }
 
-    var moviDV = await readSlice(file, moviStart, 12);
-    if (moviDV.getUint32(0) != 0x4C495354) {
-        return Promise.reject("bad header: movi LIST");
-    }
-    if (moviDV.getUint32(8) != 0x6D6F7669) {
-        return Promise.reject("bad header: movi");
-    }
     var moviSize = moviDV.getUint32(4, true);
 
     var idxStart = moviStart + 8 + moviSize;
@@ -132,7 +125,7 @@ async function loadAVIMetadata(file, localFrameOffsets) {
         flags = idxDV.getUint32(pos + 4, true);
         offset = idxDV.getUint32(pos + 8, true);
         size = idxDV.getUint32(pos + 12, true);
-        if (chunkId == 0x62643030) {
+        if ((chunkId == 0x62643030 || chunkId == 0x63643030) && size != 0) {
             localFrameOffsets.push([file, offset + moviStart + 17]);
             cnt += 1;
         }
@@ -140,7 +133,13 @@ async function loadAVIMetadata(file, localFrameOffsets) {
     }
 
     if (totalFrames != cnt) {
+        // We allow some lenience for what Bizhawk does with multipart AVIs, where there may be 1 audio frame with no video?
+        // A difference of more than one frame indicates a bigger problem
         console.log(`index video frame count ${cnt} does not match total frame count ${totalFrames}`);
+
+        if (Math.abs(totalFrames - cnt) > 1) {
+            return Promise.reject("wrong frame count");
+        }
     }
 
     console.log(`Loaded video header: ${width} x ${height}, ${fps} fps, ${totalFrames} frames`);
