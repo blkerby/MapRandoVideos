@@ -746,10 +746,13 @@ async function updateFilter() {
         let webpEl = document.createElement('img');
         webpEl.classList.add("webp");
         webpEl.loading = "lazy";
-        webpEl.src = videoStorageClientUrl + "/webp/" + video.id + ".webp";
+        webpEl.src = videoStorageClientUrl + "/png/" + video.id + ".png";
         webpEl.fetchPriority = "low";
         webpEl.style = "width:128px;";
         imgA.appendChild(webpEl);
+        row.addEventListener("mouseover", function() {
+            webpEl.src = videoStorageClientUrl + "/webp/" + video.id + ".webp";
+        });
 
         let textCol = document.createElement('div');
         textCol.classList.add("col-sm-8");
