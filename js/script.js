@@ -750,7 +750,7 @@ async function updateFilter() {
         webpEl.fetchPriority = "low";
         webpEl.style = "width:128px;";
         imgA.appendChild(webpEl);
-        row.addEventListener("mouseover", function() {
+        row.addEventListener("mouseenter", function() {
             webpEl.src = videoStorageClientUrl + "/webp/" + video.id + ".webp";
         });
 
