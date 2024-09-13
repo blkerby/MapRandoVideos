@@ -686,7 +686,7 @@ async function updateFilter() {
         req.video_id = filterVideoId;
     }
     req.status_list = statuses;
-    req.sort_by = "SubmittedTimestamp";
+    req.sort_by = document.getElementById("filterSortBy").value;
     
     // The backend supports pagination but we're not using it yet.
     // If we add a lot of videos, consider dynamically loading the table rows as the user scrolls down.
