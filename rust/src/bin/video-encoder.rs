@@ -4,7 +4,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
-use futures::{executor::block_on, future::join_all, StreamExt};
+use futures::{future::join_all, StreamExt};
 use lapin::options::BasicQosOptions;
 use log::{info, error};
 use map_rando_videos::{create_object_store, EncodingTask};
@@ -40,7 +40,7 @@ struct AppData {
     db: deadpool_postgres::Pool,
     mq: deadpool_lapin::Pool,
     video_store: Box<dyn ObjectStore>,
-    awc: awc::Client,
+    reqwest_client: reqwest::Client,
 }
 
 // Using Bunny-specific API to purge the cache is awkward, but currently 
@@ -56,13 +56,14 @@ async fn bunny_purge_file(path: &str, app_data: &AppData) -> Result<()> {
     let encoded_params = serde_urlencoded::to_string(params)?;
     let req_url = format!("https://api.bunny.net/purge?{encoded_params}");
     info!("Purging Bunny cache: {}", req_url);
-    let mut result = 
-        app_data.awc.get(req_url)
-        .insert_header(("AccessKey", app_data.args.bunny_api_key.clone().unwrap()))
+    let result = 
+        app_data.reqwest_client.get(req_url)
+        .header("AccessKey", app_data.args.bunny_api_key.clone().unwrap())
         .send().await.map_err(|e| anyhow!("{:?}", e))?;
     if !result.status().is_success() {
-        error!("Response body: {}", String::from_utf8(result.body().await?.to_vec())?);
-        bail!("Error purging Bunny cache: {:?}", result);
+        let status = result.status();
+        error!("Response body: {}", result.text().await?);
+        bail!("Error purging Bunny cache: {:?}", status);
     }
     Ok(())
 }
@@ -103,7 +104,7 @@ async fn build_app_data() -> Result<AppData> {
         db: db_pool,
         mq: mq_pool,
         video_store: create_object_store(&args.video_storage_bucket_url),
-        awc: awc::Client::default(),
+        reqwest_client: reqwest::Client::default(),
         args,
     };
 
@@ -199,7 +200,7 @@ async fn encode_thumbnail(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    let fut = actix_web::rt::task::spawn_blocking(move || block_on(feed_input_to_pipes(num_parts)));
+    let fut = tokio::spawn(feed_input_to_pipes(num_parts));
     let status = child.wait()?;
     info!("ffmpeg {}", status);
     fut.abort();
@@ -277,7 +278,7 @@ async fn encode_highlight(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    let fut = actix_web::rt::task::spawn_blocking(move || block_on(feed_input_to_pipes(num_parts)));
+    let fut = tokio::spawn(feed_input_to_pipes(num_parts));
     let status = child.wait()?;
     info!("ffmpeg {}", status);
     fut.abort();
@@ -347,7 +348,7 @@ async fn encode_full_video(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    let fut = actix_web::rt::task::spawn_blocking(move || block_on(feed_input_to_pipes(num_parts)));
+    let fut = tokio::spawn(feed_input_to_pipes(num_parts));
     let status = child.wait()?;
     info!("ffmpeg {}", status);
     fut.abort();
@@ -436,7 +437,7 @@ async fn process_task(task: &EncodingTask, app_data: &AppData) -> Result<()> {
     Ok(())
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_millis()

@@ -125,6 +125,7 @@ struct HomeQuery {
 fn get_difficulty_levels() -> Vec<String> {
     vec![
         "Uncategorized",
+        "Implicit",
         "Basic",
         "Medium",
         "Hard",
@@ -1447,7 +1448,6 @@ async fn main() {
     HttpServer::new(move || {
         App::new()
             .app_data(app_data.clone())
-            .app_data(awc::Client::default())
             .wrap(Compress::default())
             .wrap(Logger::default())
             .service(home)
