@@ -1100,7 +1100,7 @@ async function deleteVideo() {
     }
 }
 
-async function openTech() {
+async function populateTech() {
     let response = await fetch("/tech");
     if (!response.ok) {
         console.log(`Error status ${response.status} loading tech: ${await response.text()}`);
@@ -1183,6 +1183,7 @@ async function openTech() {
             let videoIdInput = document.createElement('input');
             videoIdInput.classList.add("form-control");
             videoIdInput.id = `techVideoId${techId}`;
+            videoIdInput.classList.add("video-id");
             videoIdInput.size = 6;
             videoIdInput.setAttribute("onchange", `updateTechVideo(${techId})`);
             videoIdInput.value = tech["video_id"];
@@ -1229,29 +1230,7 @@ async function openTech() {
     updatedTech = new Set();
 }
 
-function updateTechVideo(techId) {
-    updatedTech.add(techId);
-    let videoIdEl = document.getElementById(`techVideoId${techId}`);
-    let videoId = videoIdEl.value;
-    let pngEl = document.getElementById(`techPng${techId}`);
-    let webpEl = document.getElementById(`techWebp${techId}`);
-    // let videoUrl = videoStorageClientUrl + "/mp4/" + videoId + ".mp4";
-    if (videoId === "") {
-        pngEl.classList.add("d-none");
-        webpEl.classList.add("d-none");
-    } else {
-        pngEl.classList.remove("d-none");
-        webpEl.classList.remove("d-none");
-        pngEl.src = videoStorageClientUrl + "/png/" + videoId + ".png";        
-        webpEl.src = videoStorageClientUrl + "/webp/" + videoId + ".webp";
-    }
-}
-
-function updateTechDifficulty(techId) {
-    updatedTech.add(techId);
-}
-
-async function openNotables() {
+async function populateNotables() {
     let response = await fetch("/notables");
     if (!response.ok) {
         console.log(`Error status ${response.status} loading notables: ${await response.text()}`);
@@ -1335,6 +1314,7 @@ async function openNotables() {
             videoIdInputCol.classList.add("col-auto");
             let videoIdInput = document.createElement('input');
             videoIdInput.classList.add("form-control");
+            videoIdInput.classList.add("video-id");
             videoIdInput.id = `notableVideoId${comboId}`;
             videoIdInput.size = 6;
             videoIdInput.setAttribute("onchange", `updateNotableVideo(${roomId}, ${notableId})`);
@@ -1382,6 +1362,55 @@ async function openNotables() {
     updatedNotables = new Set();
 }
 
+async function openTech() {
+    populateTech();
+    populateNotables();
+    updateMissingVideoCount();
+}
+
+function updateMissingVideoCount() {
+    for (difficulty of difficultyLevels) {
+        let difficultyNoSpace = difficulty.replace(/ /g, '');
+        let difficultyParent = `collapse${difficultyNoSpace}Tech`;
+        var cnt = 0;
+        for (el of document.querySelectorAll(`#${difficultyParent} .video-id`)) {
+            if (el.value === "") {
+                cnt += 1;
+            }
+        }
+        let missingCntEl = document.getElementById(`difficultyCountMissingVideos${difficultyNoSpace}`);
+        if (cnt > 0) {
+            missingCntEl.innerText = ` - ${cnt} missing videos`;
+        } else {
+            missingCntEl.innerText = "";
+        }
+        console.log(`difficulty ${difficulty}: ${cnt}`);
+    }
+}
+
+function updateTechVideo(techId) {
+    updatedTech.add(techId);
+    let videoIdEl = document.getElementById(`techVideoId${techId}`);
+    let videoId = videoIdEl.value;
+    let pngEl = document.getElementById(`techPng${techId}`);
+    let webpEl = document.getElementById(`techWebp${techId}`);
+    // let videoUrl = videoStorageClientUrl + "/mp4/" + videoId + ".mp4";
+    if (videoId === "") {
+        pngEl.classList.add("d-none");
+        webpEl.classList.add("d-none");
+    } else {
+        pngEl.classList.remove("d-none");
+        webpEl.classList.remove("d-none");
+        pngEl.src = videoStorageClientUrl + "/png/" + videoId + ".png";        
+        webpEl.src = videoStorageClientUrl + "/webp/" + videoId + ".webp";
+    }
+    updateMissingVideoCount();
+}
+
+function updateTechDifficulty(techId) {
+    updatedTech.add(techId);
+}
+
 function updateNotableVideo(roomId, notableId) {
     updatedNotables.add([roomId, notableId]);
     let comboId = `${roomId}n${notableId}`;
@@ -1399,6 +1428,7 @@ function updateNotableVideo(roomId, notableId) {
         pngEl.src = videoStorageClientUrl + "/png/" + videoId + ".png";        
         webpEl.src = videoStorageClientUrl + "/webp/" + videoId + ".webp";
     }
+    updateMissingVideoCount();
 }
 
 function updateNotableDifficulty(roomId, notableId) {
