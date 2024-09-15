@@ -15,11 +15,12 @@ log = "0.4.17"
 glob = "0.3.1"
 serde = "1.0.204"
 serde_json = "1.0.122"
+serde_urlencoded = "0.7.1"
 strum = { version = "0.26", features = ["derive"] }
 tokio = "1.38.1"
 tokio-postgres = { version = "0.7.11", features=["with-chrono-0_4"] }
 deadpool-postgres = "0.14.0"
-anyhow = {version = "1.0.68", features = ["backtrace"]}
+anyhow = {version = "1.0.88", features = ["backtrace"]}
 actix-web-httpauth = "0.8.2"
 futures-util = "0.3.30"
 async-compression = {version = "0.4.12", features = ["tokio", "gzip", "xz"]}
@@ -29,3 +30,4 @@ lapin = "2.5.0"
 deadpool-lapin = "0.12.1"
 unix-named-pipe = "0.2.0"
 sha2 = "0.10.8"
+awc = {version = "3.5.1", features=["openssl"]}

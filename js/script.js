@@ -12,6 +12,7 @@ var startUploadKey = null;
 var finishUploadKey = null;
 var submitting = false;
 var userMapping = null;
+var updatedTech = new Set();
 
 function readSlice(file, start, size) {
     return new Promise(function(resolve, reject) {
@@ -500,6 +501,7 @@ function updateLogin() {
     let logoutButton = document.getElementById("logoutButton");
     let loginButton = document.getElementById("loginButton");
     let uploadButton = document.getElementById("uploadButton");
+    let techButton = document.getElementById("techButton");
     if (username !== null) {
         logoutButton.innerText = `Log Out (${username})`;
         logoutButton.classList.remove("d-none");
@@ -509,6 +511,12 @@ function updateLogin() {
         logoutButton.classList.add("d-none");
         loginButton.classList.remove("d-none");
         uploadButton.classList.add("d-none");
+    }
+    let permission = localStorage.getItem("permission");
+    if (permission == "Editor") {
+        techButton.classList.remove("d-none");
+    } else {
+        techButton.classList.add("d-none");
     }
 }
 
@@ -824,6 +832,7 @@ async function updateFilter() {
         shareButton.classList.add("my-1");
         shareButton.classList.add("mx-1");
         shareButton.classList.add("mx-md-0")
+        shareButton.title = `Id: ${video.id}`;
         shareButton.setAttribute("onclick", `shareVideoLink(this, ${video.id})`);
         shareButton.innerHTML = '<i class="bi bi-clipboard"></i> Share';
         shareCol.appendChild(shareButton);
@@ -1088,7 +1097,188 @@ async function deleteVideo() {
         console.log(`Error deleting video ${videoId}: ${await response.text()}`);
         editModal.show();        
     }
+}
+
+async function openTech() {
+    let response = await fetch("/tech");
+    if (!response.ok) {
+        console.log(`Error status ${response.status} loading tech: ${await response.text()}`);
+        return;
+    }
+    let techJson = await response.json();
+    let techByDifficulty = {};
+    for (difficulty of difficultyLevels) {
+        techByDifficulty[difficulty] = [];
+    }
+    for (tech of techJson) {
+        techByDifficulty[tech["difficulty"]].push(tech);
+    }
+    for (difficulty of difficultyLevels) {
+        let difficultyNoSpace = difficulty.replace(/ /g, '');
+        let countEl = document.getElementById(`difficultyCount${difficultyNoSpace}`);
+        countEl.innerText = techByDifficulty[difficulty].length;
+
+        let techTableBody = document.getElementById(`techTableBody${difficultyNoSpace}`);
+        techTableBody.innerHTML = "";
+        for (tech of techByDifficulty[difficulty]) {
+            let techId = tech["tech_id"];
+            let tr = document.createElement('tr');
+            let td = document.createElement('td');
+            td.classList.add("p-2");
+            let row = document.createElement('div');
+            row.classList.add("row");
+            row.classList.add("video-row");
     
+            let imgCol = document.createElement('div');
+            imgCol.classList.add("text-center");
+            imgCol.classList.add("col-sm-4");
+            imgCol.classList.add("col-lg-2");
+
+            let pngEl = document.createElement('img');
+            pngEl.classList.add("png");
+            pngEl.loading = "lazy";
+            pngEl.style = "width:128px;";
+            pngEl.id = `techPng${techId}`;
+            imgCol.appendChild(pngEl);
+
+            let webpEl = document.createElement('img');
+            webpEl.classList.add("webp");
+            webpEl.loading = "lazy";
+            webpEl.fetchPriority = "low";
+            webpEl.style = "width:128px;";
+            webpEl.id = `techWebp${techId}`;
+            imgCol.appendChild(webpEl);
+
+            let textCol = document.createElement('div');
+            textCol.classList.add("col-sm-8");
+            textCol.classList.add("col-lg-10");
+
+            let techNameRow = document.createElement('div');
+            techNameRow.classList.add("row");
+            techNameRow.classList.add("m-2");
+            let techNameP = document.createElement('p');
+            let techNameB = document.createElement('b');
+            techNameB.innerText = tech["name"];
+            techNameP.appendChild(techNameB);
+            techNameRow.appendChild(techNameP);
+            textCol.appendChild(techNameRow);
+
+            let videoIdRow = document.createElement('div');
+            videoIdRow.classList.add("row");
+            videoIdRow.classList.add("m-2");
+            let videoIdLabelCol = document.createElement('div');
+            videoIdLabelCol.classList.add("col-auto");
+            videoIdLabelCol.classList.add("d-flex");
+            videoIdLabelCol.classList.add("align-items-center");
+            let videoIdLabel = document.createElement('label');
+            videoIdLabel.classList.add("form-label");
+            videoIdLabel.for = `techVideoId${techId}`;
+            videoIdLabel.innerText = "Video Id";
+            videoIdLabelCol.appendChild(videoIdLabel);
+            videoIdRow.appendChild(videoIdLabelCol);
+
+            let videoIdInputCol = document.createElement('div');
+            videoIdInputCol.classList.add("col-auto");
+            let videoIdInput = document.createElement('input');
+            videoIdInput.classList.add("form-control");
+            videoIdInput.id = `techVideoId${techId}`;
+            videoIdInput.size = 6;
+            videoIdInput.setAttribute("onchange", `updateTechVideo(${techId})`);
+            videoIdInput.value = tech["video_id"];
+            videoIdInputCol.appendChild(videoIdInput);
+            videoIdRow.appendChild(videoIdInputCol);
+
+            let difficultyLabelCol = document.createElement('div');
+            difficultyLabelCol.classList.add("col-auto");
+            difficultyLabelCol.classList.add("d-flex");
+            difficultyLabelCol.classList.add("align-items-center");
+            let difficultyLabel = document.createElement('label');
+            difficultyLabel.classList.add("form-label");
+            difficultyLabel.for = `techDifficulty${techId}`;
+            difficultyLabel.innerText = "Difficulty";
+            difficultyLabelCol.appendChild(difficultyLabel);
+            videoIdRow.appendChild(difficultyLabelCol);
+
+            let difficultySelectCol = document.createElement('div');
+            difficultySelectCol.classList.add("col-auto");
+            let difficultySelect = document.createElement('select');
+            difficultySelect.classList.add("form-select");
+            difficultySelect.id = `techDifficulty${techId}`;
+            difficultySelect.setAttribute("onchange", `updateTechDifficulty(${techId})`);
+            for (d of difficultyLevels) {
+                let difficultyOption = document.createElement('option');
+                difficultyOption.value = d;
+                difficultyOption.innerText = d;
+                difficultySelect.appendChild(difficultyOption);
+            }
+            difficultySelect.value = difficulty;
+            difficultySelectCol.appendChild(difficultySelect);
+            videoIdRow.appendChild(difficultySelectCol);
+            textCol.appendChild(videoIdRow);
+
+            row.appendChild(imgCol);
+            row.appendChild(textCol);
+            td.appendChild(row);
+            tr.appendChild(td);
+            techTableBody.appendChild(tr);    
+
+            updateTechVideo(techId);
+        }
+    }
+    updatedTech = new Set();
+}
+
+function updateTechVideo(techId) {
+    updatedTech.add(techId);
+    let videoIdEl = document.getElementById(`techVideoId${techId}`);
+    let videoId = videoIdEl.value;
+    let pngEl = document.getElementById(`techPng${techId}`);
+    let webpEl = document.getElementById(`techWebp${techId}`);
+    // let videoUrl = videoStorageClientUrl + "/mp4/" + videoId + ".mp4";
+    if (videoId === "") {
+        pngEl.classList.add("d-none");
+        webpEl.classList.add("d-none");
+    } else {
+        pngEl.classList.remove("d-none");
+        webpEl.classList.remove("d-none");
+        pngEl.src = videoStorageClientUrl + "/png/" + videoId + ".png";        
+        webpEl.src = videoStorageClientUrl + "/webp/" + videoId + ".webp";
+    }
+}
+
+function updateTechDifficulty(techId) {
+    updatedTech.add(techId);
+}
+
+async function submitTech() {
+    let techModal = bootstrap.Modal.getInstance(document.getElementById("techModal"));
+    let reqArray = [];
+    for (techId of updatedTech) {
+        let difficulty = document.getElementById(`techDifficulty${techId}`).value;
+        let videoId = parseInt(document.getElementById(`techVideoId${techId}`).value);
+        reqArray.push({
+            tech_id: techId,
+            difficulty: difficulty,
+            video_id: videoId, 
+        });
+    }
+    let reqJson = JSON.stringify(reqArray);
+
+    let username = localStorage.getItem("username");
+    let token = localStorage.getItem("token");
+
+    let response = await fetch("/tech", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": 'Basic ' + btoa(username + ":" + token),
+        },
+        body: reqJson
+    });
+    if (!response.ok) {
+        throw new Error(`Error status ${response.status} updating tech: ${await response.text()}`);
+    }
+    techModal.hide();
 }
 
 function startVideo(url) {

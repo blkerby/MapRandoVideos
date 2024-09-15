@@ -36,12 +36,33 @@
     <script>
         const videoStorageClientUrl = "{{ video_storage_client_url }}";
         var filterVideoId = {% if video_id.is_some() %} {{ video_id.unwrap() }} {% else %} null {% endif %};
+        let difficultyLevels = [
+          {% for d in difficulty_levels %}"{{ d }}",{% endfor %}
+        ];
     </script>
+    <style>
+        html[data-bs-theme=dark] .table {
+            --bs-table-hover-bg: #2b3035;
+        }
+        html[data-bs-theme=light] .table {
+            --bs-table-hover-bg: #f4f5f6;
+        }
+        .png {
+            position: absolute;
+        }
+        .video-row:hover .png {
+            opacity: 0;
+        }
+        .video-row:not(:hover) .webp {
+            opacity: 0;
+        }        
+    </style>
 </head>
 <body>
     {% include "navbar.html" %}
     {% include "upload.html" %}
     {% include "edit.html" %}
+    {% include "tech.html" %}
     {% include "login.html" %}  
     <div class="container col-lg-10 col-xl-9 col-xxl-7">
         {% include "intro.html" %}

@@ -2,11 +2,11 @@ use std::{
     fs::File, io::Write, ops::Deref, process::{Command, Stdio}
 };
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use clap::Parser;
-use futures::{future::join_all, StreamExt};
+use futures::{executor::block_on, future::join_all, StreamExt};
 use lapin::options::BasicQosOptions;
-use log::info;
+use log::{info, error};
 use map_rando_videos::{create_object_store, EncodingTask};
 use object_store::{path::Path, ObjectStore, PutOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -29,6 +29,10 @@ struct Args {
     video_storage_bucket_url: String,
     #[arg(long, env)]
     ffmpeg_path: String,
+    #[arg(long, env)]
+    bunny_url: Option<String>,
+    #[arg(long, env)]
+    bunny_api_key: Option<String>,
 }
 
 struct AppData {
@@ -36,6 +40,31 @@ struct AppData {
     db: deadpool_postgres::Pool,
     mq: deadpool_lapin::Pool,
     video_store: Box<dyn ObjectStore>,
+    awc: awc::Client,
+}
+
+// Using Bunny-specific API to purge the cache is awkward, but currently 
+// there aren't other more appealing alternatives.
+async fn bunny_purge_file(path: &str, app_data: &AppData) -> Result<()> {
+    if app_data.args.bunny_url.is_none() || app_data.args.bunny_api_key.is_none() {
+        return Ok(());
+    }
+    let params = [
+        ("async", "false".to_string()),
+        ("url", format!("{}/{}", app_data.args.bunny_url.clone().unwrap(), path))
+    ];
+    let encoded_params = serde_urlencoded::to_string(params)?;
+    let req_url = format!("https://api.bunny.net/purge?{encoded_params}");
+    info!("Purging Bunny cache: {}", req_url);
+    let mut result = 
+        app_data.awc.get(req_url)
+        .insert_header(("AccessKey", app_data.args.bunny_api_key.clone().unwrap()))
+        .send().await.map_err(|e| anyhow!("{:?}", e))?;
+    if !result.status().is_success() {
+        error!("Response body: {}", String::from_utf8(result.body().await?.to_vec())?);
+        bail!("Error purging Bunny cache: {:?}", result);
+    }
+    Ok(())
 }
 
 async fn build_app_data() -> Result<AppData> {
@@ -74,6 +103,7 @@ async fn build_app_data() -> Result<AppData> {
         db: db_pool,
         mq: mq_pool,
         video_store: create_object_store(&args.video_storage_bucket_url),
+        awc: awc::Client::default(),
         args,
     };
 
@@ -169,7 +199,7 @@ async fn encode_thumbnail(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    let fut = tokio::spawn(feed_input_to_pipes(num_parts));
+    let fut = actix_web::rt::task::spawn_blocking(move || block_on(feed_input_to_pipes(num_parts)));
     let status = child.wait()?;
     info!("ffmpeg {}", status);
     fut.abort();
@@ -179,7 +209,8 @@ async fn encode_thumbnail(
 
     // Write the output thumbnail to object storage:
     let output_data = std::fs::read(output_path)?;
-    let output_key = object_store::path::Path::parse(format!("png/{}.png", video_id))?;
+    let output_key = format!("png/{}.png", video_id);
+    let output_path = object_store::path::Path::parse(output_key.clone())?;
     let mut attrs = object_store::Attributes::new();
     attrs.insert(object_store::Attribute::ContentType, "image/png".into());
     let put_opts = PutOptions {
@@ -189,8 +220,11 @@ async fn encode_thumbnail(
     };
     app_data
         .video_store
-        .put_opts(&output_key, output_data.into(), put_opts)
+        .put_opts(&output_path, output_data.into(), put_opts)
         .await?;
+
+    // Invalidate the object cache (Bunny CDN)
+    bunny_purge_file(&output_key, app_data).await?;
 
     // Update the `thumbnail_processed_ts` in the database:
     let db = app_data.db.get().await?;
@@ -243,7 +277,7 @@ async fn encode_highlight(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    let fut = tokio::spawn(feed_input_to_pipes(num_parts));
+    let fut = actix_web::rt::task::spawn_blocking(move || block_on(feed_input_to_pipes(num_parts)));
     let status = child.wait()?;
     info!("ffmpeg {}", status);
     fut.abort();
@@ -253,7 +287,8 @@ async fn encode_highlight(
     
     // Write the output highlight to object storage:
     let output_data = std::fs::read(output_path)?;
-    let output_key = object_store::path::Path::parse(format!("webp/{}.webp", video_id))?;
+    let output_key = format!("webp/{}.webp", video_id);
+    let output_path = object_store::path::Path::parse(output_key.clone())?;
     let mut attrs = object_store::Attributes::new();
     attrs.insert(object_store::Attribute::ContentType, "image/webp".into());
     let put_opts = PutOptions {
@@ -263,8 +298,11 @@ async fn encode_highlight(
     };
     app_data
         .video_store
-        .put_opts(&output_key, output_data.into(), put_opts)
+        .put_opts(&output_path, output_data.into(), put_opts)
         .await?;
+
+    // Invalidate the object cache (Bunny CDN)
+    bunny_purge_file(&output_key, app_data).await?;
 
     // Update the `highlight_processed_ts` in the database:
     let db = app_data.db.get().await?;
@@ -309,7 +347,7 @@ async fn encode_full_video(
         .spawn()
         .expect("error spawning ffmpeg");
 
-    let fut = tokio::spawn(feed_input_to_pipes(num_parts));
+    let fut = actix_web::rt::task::spawn_blocking(move || block_on(feed_input_to_pipes(num_parts)));
     let status = child.wait()?;
     info!("ffmpeg {}", status);
     fut.abort();
@@ -323,7 +361,8 @@ async fn encode_full_video(
 
     // Write the output mp4 to object storage:
     let output_data = std::fs::read(output_path)?;
-    let output_key = object_store::path::Path::parse(format!("mp4/{}.mp4", video_id))?;
+    let output_key = format!("mp4/{}.mp4", video_id);
+    let output_path = object_store::path::Path::parse(output_key.clone())?;
     let mut attrs = object_store::Attributes::new();
     attrs.insert(object_store::Attribute::ContentType, "video/mp4".into());
     let put_opts = PutOptions {
@@ -333,8 +372,11 @@ async fn encode_full_video(
     };
     app_data
         .video_store
-        .put_opts(&output_key, output_data.into(), put_opts)
+        .put_opts(&output_path, output_data.into(), put_opts)
         .await?;
+
+    // Invalidate the object cache (Bunny CDN)
+    bunny_purge_file(&output_key, app_data).await?;
 
     // Update the `full_video_processed_ts` in the database:
     let db = app_data.db.get().await?;
@@ -394,7 +436,7 @@ async fn process_task(task: &EncodingTask, app_data: &AppData) -> Result<()> {
     Ok(())
 }
 
-#[tokio::main]
+#[actix_web::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_millis()

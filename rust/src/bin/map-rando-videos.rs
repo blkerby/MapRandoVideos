@@ -1,17 +1,22 @@
 use actix_web::{
-    self, delete, error::ErrorNotFound, get, http::StatusCode, middleware::{Compress, Logger}, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder
+    self, delete,
+    error::ErrorNotFound,
+    get,
+    http::StatusCode,
+    middleware::{Compress, Logger},
+    post, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
 use actix_web_httpauth::extractors::basic::BasicAuth;
 use anyhow::{bail, Context, Result};
 use askama::Template;
 use clap::Parser;
+use core::str;
 use futures_util::StreamExt as _;
 use log::{error, info};
 use map_rando_videos::{create_object_store, EncodingTask};
 use object_store::ObjectStore;
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
-use core::str;
+use sha2::{Digest, Sha256};
 use std::str::FromStr as _;
 use tokio::io::AsyncReadExt as _;
 use tokio::io::AsyncWriteExt as _;
@@ -62,6 +67,7 @@ struct HomeTemplate {
     og_title: Option<String>,
     video_id: Option<i32>,
     video_statuses: Vec<String>,
+    difficulty_levels: Vec<String>,
 }
 
 async fn build_app_data() -> AppData {
@@ -116,6 +122,23 @@ struct HomeQuery {
     video_id: Option<i32>,
 }
 
+fn get_difficulty_levels() -> Vec<String> {
+    vec![
+        "Uncategorized",
+        "Basic",
+        "Medium",
+        "Hard",
+        "Very Hard",
+        "Expert",
+        "Extreme",
+        "Insane",
+        "Beyond",
+    ]
+    .into_iter()
+    .map(|x| x.to_string())
+    .collect()
+}
+
 #[get("/")]
 async fn home(app_data: web::Data<AppData>, query: web::Query<HomeQuery>) -> impl Responder {
     let home_template = HomeTemplate {
@@ -126,15 +149,18 @@ async fn home(app_data: web::Data<AppData>, query: web::Query<HomeQuery>) -> imp
             .into_iter()
             .map(|x| x.to_string())
             .collect(),
+        difficulty_levels: get_difficulty_levels(),
     };
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(home_template.render().unwrap())
 }
 
-
 #[get("/video/{video_id}")]
-async fn video_html(app_data: web::Data<AppData>, video_id: web::Path<i32>) -> actix_web::Result<impl Responder> {
+async fn video_html(
+    app_data: web::Data<AppData>,
+    video_id: web::Path<i32>,
+) -> actix_web::Result<impl Responder> {
     let sql = r#"
         SELECT 
             r.name as room_name,
@@ -146,7 +172,10 @@ async fn video_html(app_data: web::Data<AppData>, video_id: web::Path<i32>) -> a
     "#;
     let db = app_data.db.get().await.unwrap();
     let stmt = db.prepare_cached(&sql).await.unwrap();
-    let row = db.query_one(&stmt, &[&*video_id]).await.map_err(|e| ErrorNotFound(e))?;
+    let row = db
+        .query_one(&stmt, &[&*video_id])
+        .await
+        .map_err(|e| ErrorNotFound(e))?;
 
     let room_name: Option<String> = row.get("room_name");
     let strat_name: Option<String> = row.get("strat_name");
@@ -168,12 +197,12 @@ async fn video_html(app_data: web::Data<AppData>, video_id: web::Path<i32>) -> a
             .into_iter()
             .map(|x| x.to_string())
             .collect(),
+        difficulty_levels: get_difficulty_levels(),
     };
     Ok(HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(home_template.render().unwrap()))
 }
-
 
 struct AccountInfo {
     id: i32,
@@ -194,7 +223,7 @@ async fn authenticate(app_data: web::Data<AppData>, auth: &BasicAuth) -> Result<
             let id: i32 = row.get("id");
             let stored_token_hash: Vec<u8> = row.get("token_hash");
             let permission_str: String = row.get("permission");
-            
+
             let mut hasher = Sha256::new();
             hasher.update(auth.password().unwrap_or(""));
             let presented_token_hash: Vec<u8> = hasher.finalize().to_vec();
@@ -250,13 +279,19 @@ async fn try_upload_video(
     };
     info!("video_id: {:?}", video_id);
     let num_parts = {
-        let v = req.headers().get("X-MapRandoVideos-NumParts").context("missing X-MapRandoVideos-NumParts")?;
+        let v = req
+            .headers()
+            .get("X-MapRandoVideos-NumParts")
+            .context("missing X-MapRandoVideos-NumParts")?;
         let s = str::from_utf8(v.as_bytes())?;
         i32::from_str(s)?
     };
     info!("num_parts: {}", num_parts);
     let part_num = {
-        let v = req.headers().get("X-MapRandoVideos-PartNum").context("missing X-MapRandoVideos-PartNum")?;
+        let v = req
+            .headers()
+            .get("X-MapRandoVideos-PartNum")
+            .context("missing X-MapRandoVideos-PartNum")?;
         let s = str::from_utf8(v.as_bytes())?;
         i32::from_str(s)?
     };
@@ -289,7 +324,11 @@ async fn try_upload_video(
         let result = db_client.query_one(&stmt, &[&id, &account_info.id]).await?;
         let next_part_num: i32 = result.get(0);
         if next_part_num != part_num {
-            bail!("Out-of-sequence part number {}. Expecting {}", part_num, next_part_num);
+            bail!(
+                "Out-of-sequence part number {}. Expecting {}",
+                part_num,
+                next_part_num
+            );
         }
     }
 
@@ -336,7 +375,9 @@ async fn try_upload_video(
             VALUES ($1, $2, 1, 'Pending', $3, $3)
         "#;
         let stmt = db_client.prepare_cached(sql).await?;
-        db_client.execute(&stmt, &[&id, &num_parts, &account_info.id]).await?;
+        db_client
+            .execute(&stmt, &[&id, &num_parts, &account_info.id])
+            .await?;
         info!("Inserted video into database (id={})", id);
     } else {
         let sql = r#"
@@ -468,7 +509,10 @@ async fn try_submit_video(
     if cnt == 1 {
         info!("Submitted video: id={}", req.video_id);
     } else {
-        bail!("Unexpected update row count: {} (upload may be incomplete?)", cnt);
+        bail!(
+            "Unexpected update row count: {} (upload may be incomplete?)",
+            cnt
+        );
     }
 
     // Send messages to RabbitMQ to trigger processes to encode the thumbnail image, animated highlight, and full video.
@@ -816,12 +860,22 @@ async fn download_video(
     };
 
     // TODO: Maybe figure out how to make this work by streaming the whole process
-    let object_path = format!("{}avi-xz/{}-{}.avi.xz", app_data.args.video_storage_prefix, req.video_id, req.part_num);
+    let object_path = format!(
+        "{}avi-xz/{}-{}.avi.xz",
+        app_data.args.video_storage_prefix, req.video_id, req.part_num
+    );
     info!("downloading {}", object_path);
-    let xz_data = app_data.video_store.get(&object_store::path::Path::parse(&object_path)
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?)
-        .await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?
-        .bytes().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    let xz_data = app_data
+        .video_store
+        .get(
+            &object_store::path::Path::parse(&object_path)
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?,
+        )
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?
+        .bytes()
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
     info!("decompressing & recompressing {}", object_path);
     let uncompressed = async_compression::tokio::bufread::XzDecoder::new(&*xz_data);
     let buf_uncompressed = tokio::io::BufReader::new(uncompressed);
@@ -962,7 +1016,10 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
         param_values.push(req.video_id.as_ref().unwrap());
     }
     if req.user_id.is_some() {
-        sql_filters.push(format!("v.created_account_id = ${}", param_values.len() + 1));
+        sql_filters.push(format!(
+            "v.created_account_id = ${}",
+            param_values.len() + 1
+        ));
         param_values.push(req.user_id.as_ref().unwrap());
     }
     sql_filters.push(format!(
@@ -1263,6 +1320,122 @@ async fn list_strats(
     Ok(web::Json(v))
 }
 
+#[derive(Serialize)]
+struct TechListing {
+    tech_id: i32,
+    name: String,
+    difficulty: String,
+    video_id: Option<i32>,
+}
+
+async fn try_list_tech(app_data: &AppData) -> Result<Vec<TechListing>> {
+    let db = app_data.db.get().await?;
+    let stmt = db
+        .prepare_cached(
+            r#"
+      SELECT 
+        t.tech_id,
+        t.name,
+        s.difficulty,
+        s.video_id
+      FROM tech t
+      LEFT JOIN tech_setting s ON s.tech_id = t.tech_id
+      ORDER BY tech_id"#,
+        )
+        .await?;
+    let tech_rows = db.query(&stmt, &[]).await?;
+    let mut tech_listings: Vec<TechListing> = vec![];
+    for row in tech_rows {
+        let tech_id: i32 = row.get("tech_id");
+        let name: String = row.get("name");
+        let difficulty: Option<String> = row.get("difficulty");
+        let video_id: Option<i32> = row.get("video_id");
+        tech_listings.push(TechListing {
+            tech_id,
+            name,
+            difficulty: difficulty.unwrap_or("Uncategorized".to_string()),
+            video_id,
+        });
+    }
+    Ok(tech_listings)
+}
+
+#[get("/tech")]
+async fn list_tech(app_data: web::Data<AppData>) -> actix_web::Result<impl Responder> {
+    let v = try_list_tech(&app_data)
+        .await
+        .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
+    Ok(web::Json(v))
+}
+
+#[derive(Deserialize, Debug)]
+struct TechUpdate {
+    tech_id: i32,
+    difficulty: String,
+    video_id: Option<i32>,
+}
+
+async fn try_update_tech(app_data: &AppData, tech_update: &TechUpdate) -> Result<()> {
+    let db = app_data.db.get().await?;
+    let stmt = db
+        .prepare_cached(
+            r#"
+            INSERT INTO tech_setting (tech_id, difficulty, video_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (tech_id) DO UPDATE SET
+                difficulty = $2,
+                video_id = $3
+        "#,
+        )
+        .await?;
+    let cnt_updated = db
+        .execute(
+            &stmt,
+            &[
+                &tech_update.tech_id,
+                &tech_update.difficulty,
+                &tech_update.video_id,
+            ],
+        )
+        .await?;
+    if cnt_updated != 1 {
+        error!(
+            "Unexpected tech updated count {}: {:?}",
+            cnt_updated, tech_update
+        );
+    }
+    Ok(())
+}
+
+#[post("/tech")]
+async fn update_tech(
+    app_data: web::Data<AppData>,
+    tech_updates: web::Json<Vec<TechUpdate>>,
+    auth: BasicAuth,
+) -> impl Responder {
+    let account_info = match authenticate(app_data.clone(), &auth).await {
+        Ok(ai) => ai,
+        Err(e) => {
+            error!("Failed authentication: {}", e);
+            return HttpResponse::Unauthorized().body("Failed authentication");
+        }
+    };
+
+    match account_info.permission {
+        Permission::Editor => {},
+        Permission::Default => {
+            return HttpResponse::Unauthorized().body("Unauthorized");
+        }
+    }
+
+    for tech in &tech_updates.0 {
+        if let Err(e) = try_update_tech(&app_data, tech).await {
+            return HttpResponse::InternalServerError().body(e.to_string());
+        }
+    }
+    HttpResponse::Ok().body("")
+}
+
 #[actix_web::main]
 async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -1274,6 +1447,7 @@ async fn main() {
     HttpServer::new(move || {
         App::new()
             .app_data(app_data.clone())
+            .app_data(awc::Client::default())
             .wrap(Compress::default())
             .wrap(Logger::default())
             .service(home)
@@ -1286,6 +1460,8 @@ async fn main() {
             .service(list_rooms_by_area)
             .service(list_nodes)
             .service(list_strats)
+            .service(list_tech)
+            .service(update_tech)
             .service(get_video)
             .service(edit_video)
             .service(delete_video)

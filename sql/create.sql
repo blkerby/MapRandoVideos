@@ -62,3 +62,31 @@ CREATE TABLE strat (
     name varchar(1000),
     PRIMARY KEY (room_id, strat_id)
 );
+
+CREATE TABLE tech (
+    tech_id integer PRIMARY KEY,
+    name varchar(1000)
+);
+
+CREATE TABLE notable (
+    room_id integer,
+    notable_id integer,
+    name varchar(1000),
+    PRIMARY KEY (room_id, notable_id)
+);
+
+--- Tech/notable difficulty and video settings
+
+CREATE TABLE tech_setting (
+    tech_id integer PRIMARY KEY,
+    difficulty varchar(1000),
+    video_id integer
+);
+
+CREATE TABLE notable_setting (
+    room_id integer,
+    notable_id integer,
+    difficulty varchar(1000),
+    video_id integer,
+    PRIMARY KEY (room_id, notable_id)
+);

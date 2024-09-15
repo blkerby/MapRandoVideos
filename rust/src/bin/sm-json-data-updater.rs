@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs, path::Path, sync::Mutex};
 
 use actix_web::{self, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder};
-use anyhow::Result;
+use anyhow::{Result, Context};
 use clap::Parser;
 use futures::pin_mut;
 use git2::Repository;
@@ -40,6 +40,7 @@ struct SMJsonDataSummary {
     rooms: Vec<RoomData>,
     nodes: Vec<NodeData>,
     strats: Vec<StratData>,
+    techs: Vec<TechData>,
 }
 
 struct AreaData {
@@ -64,6 +65,11 @@ struct StratData {
     strat_id: i32,
     from_node_id: i32,
     to_node_id: i32,
+    name: String,
+}
+
+struct TechData {
+    tech_id: i32,
     name: String,
 }
 
@@ -130,6 +136,21 @@ fn get_area(room_json: &serde_json::Value) -> String {
         area
     };
     full_area
+}
+
+fn process_tech_rec(tech_json: &serde_json::Value, out: &mut Vec<TechData>) -> Result<()> {
+    if tech_json.get("id").is_none() {
+        info!("Skipping tech without 'id': {}", tech_json["name"].as_str().unwrap());
+        return Ok(());
+    }
+    out.push(TechData {
+        tech_id: tech_json["id"].as_i64().context("Missing 'id'")? as i32,
+        name: tech_json["name"].as_str().context("Missing 'name'")?.to_owned(),
+    });
+    for t in tech_json["extensionTechs"].as_array().unwrap_or(&vec![]) {
+        process_tech_rec(t, out)?;
+    }
+    Ok(())
 }
 
 fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
@@ -199,11 +220,23 @@ fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
         }
     }
 
+    let tech_path = git_repo.workdir().unwrap().to_str().unwrap().to_string() + "tech.json";
+    let tech_str = fs::read_to_string(tech_path).unwrap();
+    let tech_json: serde_json::Value = serde_json::from_str(&tech_str).unwrap();
+    let mut techs: Vec<TechData> = vec![];
+
+    for tech_category in tech_json["techCategories"].as_array().unwrap() {
+        for tech_json in tech_category["techs"].as_array().unwrap() {
+            process_tech_rec(&tech_json, &mut techs).with_context(|| format!("Processing tech {:?}", tech_json["name"].as_str()))?;
+        }
+    }
+
     Ok(SMJsonDataSummary {
         areas,
         rooms,
         nodes,
         strats,
+        techs
     })
 }
 
@@ -300,6 +333,28 @@ async fn write_strat_table(app_data: &AppData, nodes: &[StratData]) -> Result<()
     Ok(())
 }
 
+async fn write_tech_table(app_data: &AppData, techs: &[TechData]) -> Result<()> {
+    let mut db = app_data.db.get().await?;
+    let tran = db.transaction().await?;
+    let stmt = tran.prepare_cached("TRUNCATE TABLE tech").await?;
+    tran.execute(&stmt, &[]).await?;
+    let sink = tran
+        .copy_in("COPY tech (tech_id, name) FROM STDIN BINARY")
+        .await?;
+    let writer = BinaryCopyInWriter::new(sink, &[Type::INT4, Type::VARCHAR]);
+    pin_mut!(writer);
+    let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
+    for tech in techs {
+        row.clear();
+        row.push(&tech.tech_id);
+        row.push(&tech.name);
+        writer.as_mut().write(&row).await?;
+    }
+    writer.finish().await?;
+    tran.commit().await?;
+    Ok(())
+}
+
 async fn update_incomplete_videos(app_data: &AppData) -> Result<()> {
     // Change videos with invalid or inconsistent IDs to "Incomplete" status.
     // Except videos that are already "Disabled" are left alone.
@@ -335,6 +390,7 @@ async fn update_tables(git_repo: &Repository, app_data: &AppData) -> Result<()> 
     write_room_table(app_data, &summary.rooms).await?;
     write_node_table(app_data, &summary.nodes).await?;
     write_strat_table(app_data, &summary.strats).await?;
+    write_tech_table(app_data, &summary.techs).await?;
     update_incomplete_videos(app_data).await?;
     info!("Successfully rewrote tables");
     Ok(())
