@@ -134,6 +134,7 @@ fn get_difficulty_levels() -> Vec<String> {
         "Extreme",
         "Insane",
         "Beyond",
+        "Ignored",
     ]
     .into_iter()
     .map(|x| x.to_string())
