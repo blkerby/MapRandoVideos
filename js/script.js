@@ -13,6 +13,7 @@ var finishUploadKey = null;
 var submitting = false;
 var userMapping = null;
 var updatedTech = new Set();
+var updatedNotables = new Set();
 
 function readSlice(file, start, size) {
     return new Promise(function(resolve, reject) {
@@ -1115,7 +1116,7 @@ async function openTech() {
     }
     for (difficulty of difficultyLevels) {
         let difficultyNoSpace = difficulty.replace(/ /g, '');
-        let countEl = document.getElementById(`difficultyCount${difficultyNoSpace}`);
+        let countEl = document.getElementById(`difficultyCountTech${difficultyNoSpace}`);
         countEl.innerText = techByDifficulty[difficulty].length;
 
         let techTableBody = document.getElementById(`techTableBody${difficultyNoSpace}`);
@@ -1250,8 +1251,161 @@ function updateTechDifficulty(techId) {
     updatedTech.add(techId);
 }
 
-async function submitTech() {
-    let techModal = bootstrap.Modal.getInstance(document.getElementById("techModal"));
+async function openNotables() {
+    let response = await fetch("/notables");
+    if (!response.ok) {
+        console.log(`Error status ${response.status} loading notables: ${await response.text()}`);
+        return;
+    }
+    let notableJson = await response.json();
+    let notablesByDifficulty = {};
+    for (difficulty of difficultyLevels) {
+        notablesByDifficulty[difficulty] = [];
+    }
+    for (notable of notableJson) {
+        notablesByDifficulty[notable["difficulty"]].push(notable);
+    }
+    for (difficulty of difficultyLevels) {
+        let difficultyNoSpace = difficulty.replace(/ /g, '');
+        let countEl = document.getElementById(`difficultyCountNotables${difficultyNoSpace}`);
+        countEl.innerText = notablesByDifficulty[difficulty].length;
+
+        let notableTableBody = document.getElementById(`notableTableBody${difficultyNoSpace}`);
+        notableTableBody.innerHTML = "";
+        for (notable of notablesByDifficulty[difficulty]) {
+            let roomId = notable["room_id"];
+            let notableId = notable["notable_id"];
+            let comboId = `${roomId}n${notableId}`;
+            let tr = document.createElement('tr');
+            let td = document.createElement('td');
+            td.classList.add("p-2");
+            let row = document.createElement('div');
+            row.classList.add("row");
+            row.classList.add("video-row");
+    
+            let imgCol = document.createElement('div');
+            imgCol.classList.add("text-center");
+            imgCol.classList.add("col-sm-4");
+            imgCol.classList.add("col-lg-2");
+
+            let pngEl = document.createElement('img');
+            pngEl.classList.add("png");
+            pngEl.loading = "lazy";
+            pngEl.style = "width:128px;";
+            pngEl.id = `notablePng${comboId}`;
+            imgCol.appendChild(pngEl);
+
+            let webpEl = document.createElement('img');
+            webpEl.classList.add("webp");
+            webpEl.loading = "lazy";
+            webpEl.fetchPriority = "low";
+            webpEl.style = "width:128px;";
+            webpEl.id = `notableWebp${comboId}`;
+            imgCol.appendChild(webpEl);
+
+            let textCol = document.createElement('div');
+            textCol.classList.add("col-sm-8");
+            textCol.classList.add("col-lg-10");
+
+            let notableNameRow = document.createElement('div');
+            notableNameRow.classList.add("row");
+            notableNameRow.classList.add("m-2");
+            let notableNameP = document.createElement('p');
+            let notableNameB = document.createElement('b');
+            notableNameB.innerText = notable["name"];
+            notableNameP.appendChild(notableNameB);
+            notableNameRow.appendChild(notableNameP);
+            textCol.appendChild(notableNameRow);
+
+            let videoIdRow = document.createElement('div');
+            videoIdRow.classList.add("row");
+            videoIdRow.classList.add("m-2");
+            let videoIdLabelCol = document.createElement('div');
+            videoIdLabelCol.classList.add("col-auto");
+            videoIdLabelCol.classList.add("d-flex");
+            videoIdLabelCol.classList.add("align-items-center");
+            let videoIdLabel = document.createElement('label');
+            videoIdLabel.classList.add("form-label");
+            videoIdLabel.for = `notableVideoId${comboId}`;
+            videoIdLabel.innerText = "Video Id";
+            videoIdLabelCol.appendChild(videoIdLabel);
+            videoIdRow.appendChild(videoIdLabelCol);
+
+            let videoIdInputCol = document.createElement('div');
+            videoIdInputCol.classList.add("col-auto");
+            let videoIdInput = document.createElement('input');
+            videoIdInput.classList.add("form-control");
+            videoIdInput.id = `notableVideoId${comboId}`;
+            videoIdInput.size = 6;
+            videoIdInput.setAttribute("onchange", `updateNotableVideo(${roomId}, ${notableId})`);
+            videoIdInput.value = notable["video_id"];
+            videoIdInputCol.appendChild(videoIdInput);
+            videoIdRow.appendChild(videoIdInputCol);
+
+            let difficultyLabelCol = document.createElement('div');
+            difficultyLabelCol.classList.add("col-auto");
+            difficultyLabelCol.classList.add("d-flex");
+            difficultyLabelCol.classList.add("align-items-center");
+            let difficultyLabel = document.createElement('label');
+            difficultyLabel.classList.add("form-label");
+            difficultyLabel.for = `notableDifficulty${comboId}`;
+            difficultyLabel.innerText = "Difficulty";
+            difficultyLabelCol.appendChild(difficultyLabel);
+            videoIdRow.appendChild(difficultyLabelCol);
+
+            let difficultySelectCol = document.createElement('div');
+            difficultySelectCol.classList.add("col-auto");
+            let difficultySelect = document.createElement('select');
+            difficultySelect.classList.add("form-select");
+            difficultySelect.id = `notableDifficulty${comboId}`;
+            difficultySelect.setAttribute("onchange", `updateNotableDifficulty(${roomId}, ${notableId})`);
+            for (d of difficultyLevels) {
+                let difficultyOption = document.createElement('option');
+                difficultyOption.value = d;
+                difficultyOption.innerText = d;
+                difficultySelect.appendChild(difficultyOption);
+            }
+            difficultySelect.value = difficulty;
+            difficultySelectCol.appendChild(difficultySelect);
+            videoIdRow.appendChild(difficultySelectCol);
+            textCol.appendChild(videoIdRow);
+
+            row.appendChild(imgCol);
+            row.appendChild(textCol);
+            td.appendChild(row);
+            tr.appendChild(td);
+            notableTableBody.appendChild(tr);    
+
+            updateNotableVideo(roomId, notableId);
+        }
+    }
+    updatedNotables = new Set();
+}
+
+function updateNotableVideo(roomId, notableId) {
+    updatedNotables.add([roomId, notableId]);
+    let comboId = `${roomId}n${notableId}`;
+    let videoIdEl = document.getElementById(`notableVideoId${comboId}`);
+    let videoId = videoIdEl.value;
+    let pngEl = document.getElementById(`notablePng${comboId}`);
+    let webpEl = document.getElementById(`notableWebp${comboId}`);
+    // let videoUrl = videoStorageClientUrl + "/mp4/" + videoId + ".mp4";
+    if (videoId === "") {
+        pngEl.classList.add("d-none");
+        webpEl.classList.add("d-none");
+    } else {
+        pngEl.classList.remove("d-none");
+        webpEl.classList.remove("d-none");
+        pngEl.src = videoStorageClientUrl + "/png/" + videoId + ".png";        
+        webpEl.src = videoStorageClientUrl + "/webp/" + videoId + ".webp";
+    }
+}
+
+function updateNotableDifficulty(roomId, notableId) {
+    updatedNotables.add([roomId, notableId]);
+}
+
+async function postTechUpdates() {
     let reqArray = [];
     for (techId of updatedTech) {
         let difficulty = document.getElementById(`techDifficulty${techId}`).value;
@@ -1278,6 +1432,45 @@ async function submitTech() {
     if (!response.ok) {
         throw new Error(`Error status ${response.status} updating tech: ${await response.text()}`);
     }
+}
+
+async function postNotableUpdates() {
+    let reqArray = [];
+    for (ids of updatedNotables) {
+        let roomId = ids[0];
+        let notableId = ids[1];
+        let comboId = `${roomId}n${notableId}`;
+        let difficulty = document.getElementById(`notableDifficulty${comboId}`).value;
+        let videoId = parseInt(document.getElementById(`notableVideoId${comboId}`).value);
+        reqArray.push({
+            room_id: roomId,
+            notable_id: notableId,
+            difficulty: difficulty,
+            video_id: videoId, 
+        });
+    }
+    let reqJson = JSON.stringify(reqArray);
+
+    let username = localStorage.getItem("username");
+    let token = localStorage.getItem("token");
+
+    let response = await fetch("/notables", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": 'Basic ' + btoa(username + ":" + token),
+        },
+        body: reqJson
+    });
+    if (!response.ok) {
+        throw new Error(`Error status ${response.status} updating notables: ${await response.text()}`);
+    }
+}
+
+async function submitTech() {
+    postTechUpdates();
+    postNotableUpdates();
+    let techModal = bootstrap.Modal.getInstance(document.getElementById("techModal"));
     techModal.hide();
 }
 

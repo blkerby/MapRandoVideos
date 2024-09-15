@@ -41,6 +41,7 @@ struct SMJsonDataSummary {
     nodes: Vec<NodeData>,
     strats: Vec<StratData>,
     techs: Vec<TechData>,
+    notables: Vec<NotableData>,
 }
 
 struct AreaData {
@@ -70,6 +71,12 @@ struct StratData {
 
 struct TechData {
     tech_id: i32,
+    name: String,
+}
+
+struct NotableData {
+    room_id: i32,
+    notable_id: i32,
     name: String,
 }
 
@@ -160,6 +167,7 @@ fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
     let mut rooms: Vec<RoomData> = vec![];
     let mut nodes: Vec<NodeData> = vec![];
     let mut strats: Vec<StratData> = vec![];
+    let mut notables: Vec<NotableData> = vec![];
 
     for (i, name) in area_names.iter().enumerate() {
         areas.push(AreaData {
@@ -217,6 +225,16 @@ fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
                     name: strat_name,
                 });
             }
+
+            for notable_json in room_json["notables"].as_array().unwrap() {
+                let notable_id = notable_json["id"].as_i64().unwrap() as i32;
+                let name = notable_json["name"].as_str().unwrap().to_string();
+                notables.push(NotableData {
+                    room_id,
+                    notable_id,
+                    name,
+                });
+            }
         }
     }
 
@@ -236,7 +254,8 @@ fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
         rooms,
         nodes,
         strats,
-        techs
+        techs,
+        notables,
     })
 }
 
@@ -355,6 +374,29 @@ async fn write_tech_table(app_data: &AppData, techs: &[TechData]) -> Result<()> 
     Ok(())
 }
 
+async fn write_notable_table(app_data: &AppData, notables: &[NotableData]) -> Result<()> {
+    let mut db = app_data.db.get().await?;
+    let tran = db.transaction().await?;
+    let stmt = tran.prepare_cached("TRUNCATE TABLE notable").await?;
+    tran.execute(&stmt, &[]).await?;
+    let sink = tran
+        .copy_in("COPY notable (room_id, notable_id, name) FROM STDIN BINARY")
+        .await?;
+    let writer = BinaryCopyInWriter::new(sink, &[Type::INT4, Type::INT4, Type::VARCHAR]);
+    pin_mut!(writer);
+    let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
+    for notable in notables {
+        row.clear();
+        row.push(&notable.room_id);
+        row.push(&notable.notable_id);
+        row.push(&notable.name);
+        writer.as_mut().write(&row).await?;
+    }
+    writer.finish().await?;
+    tran.commit().await?;
+    Ok(())
+}
+
 async fn update_incomplete_videos(app_data: &AppData) -> Result<()> {
     // Change videos with invalid or inconsistent IDs to "Incomplete" status.
     // Except videos that are already "Disabled" are left alone.
@@ -391,6 +433,7 @@ async fn update_tables(git_repo: &Repository, app_data: &AppData) -> Result<()> 
     write_node_table(app_data, &summary.nodes).await?;
     write_strat_table(app_data, &summary.strats).await?;
     write_tech_table(app_data, &summary.techs).await?;
+    write_notable_table(app_data, &summary.notables).await?;
     update_incomplete_videos(app_data).await?;
     info!("Successfully rewrote tables");
     Ok(())

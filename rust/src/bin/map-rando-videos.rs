@@ -1437,6 +1437,131 @@ async fn update_tech(
     HttpResponse::Ok().body("")
 }
 
+
+#[derive(Serialize)]
+struct NotableListing {
+    room_id: i32,
+    notable_id: i32,
+    name: String,
+    difficulty: String,
+    video_id: Option<i32>,
+}
+
+async fn try_list_notables(app_data: &AppData) -> Result<Vec<NotableListing>> {
+    let db = app_data.db.get().await?;
+    let stmt = db
+        .prepare_cached(
+            r#"
+      SELECT 
+        n.room_id,
+        n.notable_id,
+        n.name,
+        s.difficulty,
+        s.video_id
+      FROM notable n
+      LEFT JOIN room r on r.room_id = n.room_id
+      LEFT JOIN notable_setting s ON s.room_id = n.room_id AND s.notable_id = n.notable_id
+      ORDER BY r.area_id, room_id, notable_id"#,
+        )
+        .await?;
+    let tech_rows = db.query(&stmt, &[]).await?;
+    let mut notable_listings: Vec<NotableListing> = vec![];
+    for row in tech_rows {
+        let room_id: i32 = row.get("room_id");
+        let notable_id: i32 = row.get("notable_id");
+        let name: String = row.get("name");
+        let difficulty: Option<String> = row.get("difficulty");
+        let video_id: Option<i32> = row.get("video_id");
+        notable_listings.push(NotableListing {
+            room_id,
+            notable_id,
+            name,
+            difficulty: difficulty.unwrap_or("Uncategorized".to_string()),
+            video_id,
+        });
+    }
+    Ok(notable_listings)
+}
+
+#[get("/notables")]
+async fn list_notables(app_data: web::Data<AppData>) -> actix_web::Result<impl Responder> {
+    let v = try_list_notables(&app_data)
+        .await
+        .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
+    Ok(web::Json(v))
+}
+
+
+#[derive(Deserialize, Debug)]
+struct NotableUpdate {
+    room_id: i32,
+    notable_id: i32,
+    difficulty: String,
+    video_id: Option<i32>,
+}
+
+async fn try_update_notable(app_data: &AppData, notable_update: &NotableUpdate) -> Result<()> {
+    let db = app_data.db.get().await?;
+    let stmt = db
+        .prepare_cached(
+            r#"
+            INSERT INTO notable_setting (room_id, notable_id, difficulty, video_id)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (room_id, notable_id) DO UPDATE SET
+                difficulty = $3,
+                video_id = $4
+        "#,
+        )
+        .await?;
+    let cnt_updated = db
+        .execute(
+            &stmt,
+            &[
+                &notable_update.room_id,
+                &notable_update.notable_id,
+                &notable_update.difficulty,
+                &notable_update.video_id,
+            ],
+        )
+        .await?;
+    if cnt_updated != 1 {
+        error!(
+            "Unexpected notable updated count {}: {:?}",
+            cnt_updated, notable_update
+        );
+    }
+    Ok(())
+}
+
+#[post("/notables")]
+async fn update_notables(
+    app_data: web::Data<AppData>,
+    notable_updates: web::Json<Vec<NotableUpdate>>,
+    auth: BasicAuth,
+) -> impl Responder {
+    let account_info = match authenticate(app_data.clone(), &auth).await {
+        Ok(ai) => ai,
+        Err(e) => {
+            error!("Failed authentication: {}", e);
+            return HttpResponse::Unauthorized().body("Failed authentication");
+        }
+    };
+
+    match account_info.permission {
+        Permission::Editor => {},
+        Permission::Default => {
+            return HttpResponse::Unauthorized().body("Unauthorized");
+        }
+    }
+
+    for notable in &notable_updates.0 {
+        if let Err(e) = try_update_notable(&app_data, notable).await {
+            return HttpResponse::InternalServerError().body(e.to_string());
+        }
+    }
+    HttpResponse::Ok().body("")
+}
+
 #[actix_web::main]
 async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -1462,6 +1587,8 @@ async fn main() {
             .service(list_strats)
             .service(list_tech)
             .service(update_tech)
+            .service(list_notables)
+            .service(update_notables)
             .service(get_video)
             .service(edit_video)
             .service(delete_video)
