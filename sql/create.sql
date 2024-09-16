@@ -75,6 +75,13 @@ CREATE TABLE notable (
     PRIMARY KEY (room_id, notable_id)
 );
 
+CREATE TABLE notable_strat (
+    room_id integer,
+    notable_id integer,
+    strat_id integer,
+    PRIMARY KEY (room_id, notable_id, strat_id)
+);
+
 --- Tech/notable difficulty and video settings
 
 CREATE TABLE tech_setting (

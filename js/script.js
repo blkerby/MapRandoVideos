@@ -1341,7 +1341,7 @@ async function populateNotables() {
             let difficultySelect = document.createElement('select');
             difficultySelect.classList.add("form-select");
             difficultySelect.id = `notableDifficulty${comboId}`;
-            difficultySelect.setAttribute("onchange", `updateNotableDifficulty(${roomId}, ${notableId})`);
+            difficultySelect.setAttribute("onchange", `updateNotableDifficulty(${roomId}, ${notableId}); updateMissingVideoCount();`);
             for (const d of difficultyLevels) {
                 let difficultyOption = document.createElement('option');
                 difficultyOption.value = d;
@@ -1362,6 +1362,7 @@ async function populateNotables() {
             updateNotableVideo(roomId, notableId);
         }
     }
+    updateMissingVideoCount();
     updatedNotables = new Set();
 }
 
@@ -1406,7 +1407,6 @@ function updateTechVideo(techId) {
         pngEl.src = videoStorageClientUrl + "/png/" + videoId + ".png";        
         webpEl.src = videoStorageClientUrl + "/webp/" + videoId + ".webp";
     }
-    updateMissingVideoCount();
 }
 
 function updateTechDifficulty(techId) {
@@ -1497,6 +1497,26 @@ async function postNotableUpdates() {
     if (!response.ok) {
         throw new Error(`Error status ${response.status} updating notables: ${await response.text()}`);
     }
+}
+
+async function autoFillNotables() {
+    let response = await fetch("/auto-pick-notable-videos");
+    if (!response.ok) {
+        console.log(`Error status ${response.status} loading notable videos: ${await response.text()}`);
+        return;
+    }
+    let notableJson = await response.json();
+    for (const data of notableJson) {
+        let comboId = `${data.room_id}n${data.notable_id}`;
+        let videoIdEl = document.getElementById(`notableVideoId${comboId}`);
+        if (videoIdEl.value !== "") {
+            continue;
+        }
+        videoIdEl.value = data.video_id;
+        updateNotableVideo(data.room_id, data.notable_id);
+        updatedNotables.add([data.room_id, data.notable_id]);
+    }
+    updateMissingVideoCount();
 }
 
 async function submitTech() {

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs, path::Path, sync::Mutex};
 
 use actix_web::{self, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder};
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use clap::Parser;
 use futures::pin_mut;
 use git2::Repository;
@@ -42,6 +42,7 @@ struct SMJsonDataSummary {
     strats: Vec<StratData>,
     techs: Vec<TechData>,
     notables: Vec<NotableData>,
+    notable_strats: Vec<NotableStratData>,
 }
 
 struct AreaData {
@@ -78,6 +79,12 @@ struct NotableData {
     room_id: i32,
     notable_id: i32,
     name: String,
+}
+
+struct NotableStratData {
+    room_id: i32,
+    notable_id: i32,
+    strat_id: i32,
 }
 
 fn update_repo(repo: &Repository, branch: &str) {
@@ -147,17 +154,52 @@ fn get_area(room_json: &serde_json::Value) -> String {
 
 fn process_tech_rec(tech_json: &serde_json::Value, out: &mut Vec<TechData>) -> Result<()> {
     if tech_json.get("id").is_none() {
-        info!("Skipping tech without 'id': {}", tech_json["name"].as_str().unwrap());
+        info!(
+            "Skipping tech without 'id': {}",
+            tech_json["name"].as_str().unwrap()
+        );
         return Ok(());
     }
     out.push(TechData {
         tech_id: tech_json["id"].as_i64().context("Missing 'id'")? as i32,
-        name: tech_json["name"].as_str().context("Missing 'name'")?.to_owned(),
+        name: tech_json["name"]
+            .as_str()
+            .context("Missing 'name'")?
+            .to_owned(),
     });
     for t in tech_json["extensionTechs"].as_array().unwrap_or(&vec![]) {
         process_tech_rec(t, out)?;
     }
     Ok(())
+}
+
+fn process_requirement(
+    req: &serde_json::Value,
+    room_id: i32,
+    strat_id: i32,
+    notable_map: &HashMap<String, i32>,
+    notable_strats: &mut Vec<NotableStratData>,
+) {
+    if req.is_object() {
+        let obj = req.as_object().unwrap();
+        if let Some(val) = obj.get("notable") {
+            let notable_name = val.as_str().unwrap().to_string();
+            let notable_id = notable_map[&notable_name];
+            notable_strats.push(NotableStratData {
+                room_id,
+                notable_id,
+                strat_id,
+            });
+        } else if let Some(val) = obj.get("or") {
+            for r in val.as_array().unwrap() {
+                process_requirement(r, room_id, strat_id, notable_map, notable_strats);
+            }
+        } else if let Some(val) = obj.get("and") {
+            for r in val.as_array().unwrap() {
+                process_requirement(r, room_id, strat_id, notable_map, notable_strats);
+            }
+        }
+    }
 }
 
 fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
@@ -168,6 +210,7 @@ fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
     let mut nodes: Vec<NodeData> = vec![];
     let mut strats: Vec<StratData> = vec![];
     let mut notables: Vec<NotableData> = vec![];
+    let mut notable_strats: Vec<NotableStratData> = vec![];
 
     for (i, name) in area_names.iter().enumerate() {
         areas.push(AreaData {
@@ -207,6 +250,19 @@ fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
                 });
             }
 
+            let mut notable_map: HashMap<String, i32> = HashMap::new();
+
+            for notable_json in room_json["notables"].as_array().unwrap() {
+                let notable_id = notable_json["id"].as_i64().unwrap() as i32;
+                let name = notable_json["name"].as_str().unwrap().to_string();
+                notable_map.insert(name.clone(), notable_id);
+                notables.push(NotableData {
+                    room_id,
+                    notable_id,
+                    name,
+                });
+            }
+
             for strat_json in room_json["strats"].as_array().unwrap() {
                 let strat_id = strat_json["id"].as_i64().unwrap_or(0) as i32;
                 if strat_id == 0 {
@@ -224,16 +280,10 @@ fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
                     to_node_id,
                     name: strat_name,
                 });
-            }
 
-            for notable_json in room_json["notables"].as_array().unwrap() {
-                let notable_id = notable_json["id"].as_i64().unwrap() as i32;
-                let name = notable_json["name"].as_str().unwrap().to_string();
-                notables.push(NotableData {
-                    room_id,
-                    notable_id,
-                    name,
-                });
+                for req in strat_json["requires"].as_array().unwrap() {
+                    process_requirement(req, room_id, strat_id, &notable_map, &mut notable_strats);
+                }
             }
         }
     }
@@ -245,7 +295,8 @@ fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
 
     for tech_category in tech_json["techCategories"].as_array().unwrap() {
         for tech_json in tech_category["techs"].as_array().unwrap() {
-            process_tech_rec(&tech_json, &mut techs).with_context(|| format!("Processing tech {:?}", tech_json["name"].as_str()))?;
+            process_tech_rec(&tech_json, &mut techs)
+                .with_context(|| format!("Processing tech {:?}", tech_json["name"].as_str()))?;
         }
     }
 
@@ -256,6 +307,7 @@ fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
         strats,
         techs,
         notables,
+        notable_strats,
     })
 }
 
@@ -335,7 +387,16 @@ async fn write_strat_table(app_data: &AppData, nodes: &[StratData]) -> Result<()
     let sink = tran
         .copy_in("COPY strat (room_id, strat_id, from_node_id, to_node_id, name) FROM STDIN BINARY")
         .await?;
-    let writer = BinaryCopyInWriter::new(sink, &[Type::INT4, Type::INT4, Type::INT4, Type::INT4, Type::VARCHAR]);
+    let writer = BinaryCopyInWriter::new(
+        sink,
+        &[
+            Type::INT4,
+            Type::INT4,
+            Type::INT4,
+            Type::INT4,
+            Type::VARCHAR,
+        ],
+    );
     pin_mut!(writer);
     let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
     for node in nodes {
@@ -397,6 +458,29 @@ async fn write_notable_table(app_data: &AppData, notables: &[NotableData]) -> Re
     Ok(())
 }
 
+async fn write_notable_strat_table(app_data: &AppData, notable_strats: &[NotableStratData]) -> Result<()> {
+    let mut db = app_data.db.get().await?;
+    let tran = db.transaction().await?;
+    let stmt = tran.prepare_cached("TRUNCATE TABLE notable_strat").await?;
+    tran.execute(&stmt, &[]).await?;
+    let sink = tran
+        .copy_in("COPY notable_strat (room_id, notable_id, strat_id) FROM STDIN BINARY")
+        .await?;
+    let writer = BinaryCopyInWriter::new(sink, &[Type::INT4, Type::INT4, Type::INT4]);
+    pin_mut!(writer);
+    let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
+    for notable_strat in notable_strats {
+        row.clear();
+        row.push(&notable_strat.room_id);
+        row.push(&notable_strat.notable_id);
+        row.push(&notable_strat.strat_id);
+        writer.as_mut().write(&row).await?;
+    }
+    writer.finish().await?;
+    tran.commit().await?;
+    Ok(())
+}
+
 async fn update_incomplete_videos(app_data: &AppData) -> Result<()> {
     // Change videos with invalid or inconsistent IDs to "Incomplete" status.
     // Except videos that are already "Disabled" are left alone.
@@ -434,6 +518,7 @@ async fn update_tables(git_repo: &Repository, app_data: &AppData) -> Result<()> 
     write_strat_table(app_data, &summary.strats).await?;
     write_tech_table(app_data, &summary.techs).await?;
     write_notable_table(app_data, &summary.notables).await?;
+    write_notable_strat_table(app_data, &summary.notable_strats).await?;
     update_incomplete_videos(app_data).await?;
     info!("Successfully rewrote tables");
     Ok(())

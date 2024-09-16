@@ -1438,7 +1438,6 @@ async fn update_tech(
     HttpResponse::Ok().body("")
 }
 
-
 #[derive(Serialize)]
 struct NotableListing {
     room_id: i32,
@@ -1563,6 +1562,58 @@ async fn update_notables(
     HttpResponse::Ok().body("")
 }
 
+#[derive(Serialize)]
+struct NotableVideoPick {
+    room_id: i32,
+    notable_id: i32,
+    video_id: i32,
+}
+
+async fn try_auto_pick_notable_videos(app_data: &AppData) -> Result<Vec<NotableVideoPick>> {
+    let db = app_data.db.get().await?;
+    let stmt = db
+        .prepare_cached(
+            r#"
+        WITH vids AS (
+            SELECT 
+                s.room_id,
+                s.notable_id,
+                v.id AS video_id,
+                ROW_NUMBER() OVER(PARTITION BY s.room_id, s.notable_id ORDER BY v.id) AS rn
+            FROM notable_strat s
+            JOIN video v ON v.room_id = s.room_id AND v.strat_id = s.strat_id
+        )
+        SELECT
+            room_id,
+            notable_id,
+            video_id
+        FROM vids
+        WHERE rn = 1
+        "#)
+        .await?;
+    let rows = db.query(&stmt, &[]).await?;
+    let mut notable_video_picks: Vec<NotableVideoPick> = vec![];
+    for row in rows {
+        let room_id: i32 = row.get("room_id");
+        let notable_id: i32 = row.get("notable_id");
+        let video_id: i32 = row.get("video_id");
+        notable_video_picks.push(NotableVideoPick {
+            room_id,
+            notable_id,
+            video_id,
+        });
+    }
+    Ok(notable_video_picks)
+}
+
+#[get("/auto-pick-notable-videos")]
+async fn auto_pick_notable_videos(app_data: web::Data<AppData>) -> actix_web::Result<impl Responder> {
+    let v = try_auto_pick_notable_videos(&app_data)
+        .await
+        .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
+    Ok(web::Json(v))
+}
+
 #[actix_web::main]
 async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -1590,6 +1641,7 @@ async fn main() {
             .service(update_tech)
             .service(list_notables)
             .service(update_notables)
+            .service(auto_pick_notable_videos)
             .service(get_video)
             .service(edit_video)
             .service(delete_video)
