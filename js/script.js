@@ -827,13 +827,16 @@ async function updateFilter() {
         shareCol.classList.add("col-md-2");
         shareCol.classList.add("text-end");
 
+        let videoIdText = document.createElement('div');
+        videoIdText.innerText = `Id: ${video.id}`;
+        shareCol.appendChild(videoIdText);
+
         let shareButton = document.createElement('button');
         shareButton.classList.add("btn");
         shareButton.classList.add("btn-secondary");
         shareButton.classList.add("my-1");
         shareButton.classList.add("mx-1");
         shareButton.classList.add("mx-md-0")
-        shareButton.title = `Id: ${video.id}`;
         shareButton.setAttribute("onclick", `shareVideoLink(this, ${video.id})`);
         shareButton.innerHTML = '<i class="bi bi-clipboard"></i> Share';
         shareCol.appendChild(shareButton);
