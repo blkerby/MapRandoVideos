@@ -320,7 +320,7 @@ async function updateFile() {
 
     // Sort the files alphabetically by filename:
     var fileList = [];
-    for (file of videoFile.files) {
+    for (var file of videoFile.files) {
         fileList.push(file);
     }
     fileList.sort((a, b) => {
@@ -404,7 +404,7 @@ async function updateRoomOptions(roomSelectList) {
         throw new Error(`Error fetching rooms.json: ${overviewResponse.status}`);
     }
     let overview = await overviewResponse.json();
-    for (roomSelect of roomSelectList) {
+    for (const roomSelect of roomSelectList) {
         for (const areaData of overview.areas) {
             let optGroup = document.createElement('optgroup');
             optGroup.label = areaData.name;
@@ -642,7 +642,7 @@ async function updateUserList() {
     let userSelect = document.getElementById("filterUser");
     userMapping = {};
     userSelect.options.length = 1;
-    for (userInfo of userList) {
+    for (const userInfo of userList) {
         var opt = document.createElement('option');
         opt.value = userInfo.id;
         opt.innerText = userInfo.username;
@@ -667,7 +667,7 @@ async function updateFilter() {
     let user = document.getElementById("filterUser").value;
     let statuses = [];
     
-    for (s of document.getElementById("filterStatus").options) {
+    for (const s of document.getElementById("filterStatus").options) {
         if (s.selected) {
             statuses.push(s.value);
         }
@@ -1108,20 +1108,20 @@ async function populateTech() {
     }
     let techJson = await response.json();
     let techByDifficulty = {};
-    for (difficulty of difficultyLevels) {
+    for (const difficulty of difficultyLevels) {
         techByDifficulty[difficulty] = [];
     }
-    for (tech of techJson) {
+    for (const tech of techJson) {
         techByDifficulty[tech["difficulty"]].push(tech);
     }
-    for (difficulty of difficultyLevels) {
+    for (const difficulty of difficultyLevels) {
         let difficultyNoSpace = difficulty.replace(/ /g, '');
         let countEl = document.getElementById(`difficultyCountTech${difficultyNoSpace}`);
         countEl.innerText = techByDifficulty[difficulty].length;
 
         let techTableBody = document.getElementById(`techTableBody${difficultyNoSpace}`);
         techTableBody.innerHTML = "";
-        for (tech of techByDifficulty[difficulty]) {
+        for (const tech of techByDifficulty[difficulty]) {
             let techId = tech["tech_id"];
             let tr = document.createElement('tr');
             let td = document.createElement('td');
@@ -1207,7 +1207,7 @@ async function populateTech() {
             difficultySelect.classList.add("form-select");
             difficultySelect.id = `techDifficulty${techId}`;
             difficultySelect.setAttribute("onchange", `updateTechDifficulty(${techId})`);
-            for (d of difficultyLevels) {
+            for (const d of difficultyLevels) {
                 let difficultyOption = document.createElement('option');
                 difficultyOption.value = d;
                 difficultyOption.innerText = d;
@@ -1238,20 +1238,20 @@ async function populateNotables() {
     }
     let notableJson = await response.json();
     let notablesByDifficulty = {};
-    for (difficulty of difficultyLevels) {
+    for (const difficulty of difficultyLevels) {
         notablesByDifficulty[difficulty] = [];
     }
-    for (notable of notableJson) {
+    for (const notable of notableJson) {
         notablesByDifficulty[notable["difficulty"]].push(notable);
     }
-    for (difficulty of difficultyLevels) {
+    for (const difficulty of difficultyLevels) {
         let difficultyNoSpace = difficulty.replace(/ /g, '');
         let countEl = document.getElementById(`difficultyCountNotables${difficultyNoSpace}`);
         countEl.innerText = notablesByDifficulty[difficulty].length;
 
         let notableTableBody = document.getElementById(`notableTableBody${difficultyNoSpace}`);
         notableTableBody.innerHTML = "";
-        for (notable of notablesByDifficulty[difficulty]) {
+        for (const notable of notablesByDifficulty[difficulty]) {
             let roomId = notable["room_id"];
             let notableId = notable["notable_id"];
             let comboId = `${roomId}n${notableId}`;
@@ -1339,7 +1339,7 @@ async function populateNotables() {
             difficultySelect.classList.add("form-select");
             difficultySelect.id = `notableDifficulty${comboId}`;
             difficultySelect.setAttribute("onchange", `updateNotableDifficulty(${roomId}, ${notableId})`);
-            for (d of difficultyLevels) {
+            for (const d of difficultyLevels) {
                 let difficultyOption = document.createElement('option');
                 difficultyOption.value = d;
                 difficultyOption.innerText = d;
@@ -1369,11 +1369,11 @@ async function openTech() {
 }
 
 function updateMissingVideoCount() {
-    for (difficulty of difficultyLevels) {
+    for (const difficulty of difficultyLevels) {
         let difficultyNoSpace = difficulty.replace(/ /g, '');
         let difficultyParent = `collapse${difficultyNoSpace}Tech`;
         var cnt = 0;
-        for (el of document.querySelectorAll(`#${difficultyParent} .video-id`)) {
+        for (const el of document.querySelectorAll(`#${difficultyParent} .video-id`)) {
             if (el.value === "") {
                 cnt += 1;
             }
@@ -1384,7 +1384,6 @@ function updateMissingVideoCount() {
         } else {
             missingCntEl.innerText = "";
         }
-        console.log(`difficulty ${difficulty}: ${cnt}`);
     }
 }
 
@@ -1437,7 +1436,7 @@ function updateNotableDifficulty(roomId, notableId) {
 
 async function postTechUpdates() {
     let reqArray = [];
-    for (techId of updatedTech) {
+    for (const techId of updatedTech) {
         let difficulty = document.getElementById(`techDifficulty${techId}`).value;
         let videoId = parseInt(document.getElementById(`techVideoId${techId}`).value);
         reqArray.push({
@@ -1466,7 +1465,7 @@ async function postTechUpdates() {
 
 async function postNotableUpdates() {
     let reqArray = [];
-    for (ids of updatedNotables) {
+    for (const ids of updatedNotables) {
         let roomId = ids[0];
         let notableId = ids[1];
         let comboId = `${roomId}n${notableId}`;
