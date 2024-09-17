@@ -632,7 +632,7 @@ async fn try_edit_video(
     account_info: &AccountInfo,
 ) -> Result<()> {
     info!("edit_video: {}", std::str::from_utf8(&req_json)?);
-    let req: EditVideoRequest = serde_json::from_slice(&req_json)?;
+    let mut req: EditVideoRequest = serde_json::from_slice(&req_json)?;
 
     let db_client = app_data.db.get().await.unwrap();
     match account_info.permission {
@@ -652,6 +652,18 @@ async fn try_edit_video(
                 // It would be more "correct" to return 403 here (and 404 in case the row doesn't exist).
                 bail!("Not authorized to edit this video");
             }
+        }
+    }
+
+    if req.status == VideoStatus::Incomplete || req.status == VideoStatus::Complete {
+        if req.room_id.is_some()
+            && req.from_node_id.is_some()
+            && req.to_node_id.is_some()
+            && req.strat_id.is_some()
+        {
+            req.status = VideoStatus::Complete;
+        } else {
+            req.status = VideoStatus::Incomplete;
         }
     }
 
@@ -1424,7 +1436,7 @@ async fn update_tech(
     };
 
     match account_info.permission {
-        Permission::Editor => {},
+        Permission::Editor => {}
         Permission::Default => {
             return HttpResponse::Unauthorized().body("Unauthorized");
         }
@@ -1491,7 +1503,6 @@ async fn list_notables(app_data: web::Data<AppData>) -> actix_web::Result<impl R
     Ok(web::Json(v))
 }
 
-
 #[derive(Deserialize, Debug)]
 struct NotableUpdate {
     room_id: i32,
@@ -1548,7 +1559,7 @@ async fn update_notables(
     };
 
     match account_info.permission {
-        Permission::Editor => {},
+        Permission::Editor => {}
         Permission::Default => {
             return HttpResponse::Unauthorized().body("Unauthorized");
         }
@@ -1589,7 +1600,8 @@ async fn try_auto_pick_notable_videos(app_data: &AppData) -> Result<Vec<NotableV
             video_id
         FROM vids
         WHERE rn = 1
-        "#)
+        "#,
+        )
         .await?;
     let rows = db.query(&stmt, &[]).await?;
     let mut notable_video_picks: Vec<NotableVideoPick> = vec![];
@@ -1607,7 +1619,9 @@ async fn try_auto_pick_notable_videos(app_data: &AppData) -> Result<Vec<NotableV
 }
 
 #[get("/auto-pick-notable-videos")]
-async fn auto_pick_notable_videos(app_data: web::Data<AppData>) -> actix_web::Result<impl Responder> {
+async fn auto_pick_notable_videos(
+    app_data: web::Data<AppData>,
+) -> actix_web::Result<impl Responder> {
     let v = try_auto_pick_notable_videos(&app_data)
         .await
         .map_err(|e| actix_web::error::InternalError::new(e, StatusCode::INTERNAL_SERVER_ERROR))?;
