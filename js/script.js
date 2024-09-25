@@ -972,12 +972,15 @@ async function openEditVideo(id) {
 
     let thumbnailT = document.getElementById("edit-thumbnailTime");
     thumbnailT.value = video.thumbnail_t;
+    thumbnailT.removeAttribute("max");
 
     let highlightStartT = document.getElementById("edit-highlightStartTime");
     highlightStartT.value = video.highlight_start_t;
+    highlightStartT.removeAttribute("max");
 
     let highlightEndT = document.getElementById("edit-highlightEndTime");
     highlightEndT.value = video.highlight_end_t;
+    highlightEndT.removeAttribute("max");
 
     let status = document.getElementById("editStatus");
     status.value = video.status;
