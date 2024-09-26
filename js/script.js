@@ -1005,6 +1005,8 @@ async function openEditVideo(id) {
     } else {
         document.getElementById("deleteVideoButton").classList.remove("d-none");
     }
+
+    updateControls('edit-');
     let editModal = new bootstrap.Modal(document.getElementById("editModal"));
     editModal.show();
 }

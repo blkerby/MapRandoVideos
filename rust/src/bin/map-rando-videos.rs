@@ -10,6 +10,7 @@ use actix_web_httpauth::extractors::basic::BasicAuth;
 use anyhow::{bail, Context, Result};
 use askama::Template;
 use clap::Parser;
+use futures::executor::block_on;
 use core::str;
 use futures_util::StreamExt as _;
 use log::{error, info};
@@ -859,6 +860,27 @@ struct DownloadVideoRequest {
     part_num: i32,
 }
 
+async fn download(app_data: &AppData, object_path: &str) -> actix_web::Result<Vec<u8>> {
+    let mut output: Vec<u8> = vec![];
+    let xz_data = app_data
+        .video_store
+        .get(
+            &object_store::path::Path::parse(object_path)
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?,
+        )
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?
+        .bytes()
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    info!("decompressing & recompressing {}", object_path);
+    let uncompressed = async_compression::tokio::bufread::XzDecoder::new(&*xz_data);
+    let buf_uncompressed = tokio::io::BufReader::new(uncompressed);
+    let mut gz_enc = async_compression::tokio::bufread::GzipEncoder::new(buf_uncompressed);
+    gz_enc.read_to_end(&mut output).await?;
+    Ok(output)
+}
+
 #[get("/download-video")]
 async fn download_video(
     req: web::Query<DownloadVideoRequest>,
@@ -879,23 +901,12 @@ async fn download_video(
         app_data.args.video_storage_prefix, req.video_id, req.part_num
     );
     info!("downloading {}", object_path);
-    let xz_data = app_data
-        .video_store
-        .get(
-            &object_store::path::Path::parse(&object_path)
-                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?,
-        )
-        .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?
-        .bytes()
-        .await
+
+    let object_path_clone = object_path.clone();
+
+    // This is CPU-heavy because of the decompression/recompression, so use a separate thread:
+    let output = actix_web::rt::task::spawn_blocking(move || block_on(download(&app_data, &object_path_clone)).unwrap()).await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-    info!("decompressing & recompressing {}", object_path);
-    let uncompressed = async_compression::tokio::bufread::XzDecoder::new(&*xz_data);
-    let buf_uncompressed = tokio::io::BufReader::new(uncompressed);
-    let mut gz_enc = async_compression::tokio::bufread::GzipEncoder::new(buf_uncompressed);
-    let mut output: Vec<u8> = vec![];
-    gz_enc.read_to_end(&mut output).await?;
     info!("responding with recompressed {}", object_path);
     Ok(HttpResponse::Ok().body(output))
 }
