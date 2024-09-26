@@ -254,9 +254,6 @@ async function updatePreview(domIdPrefix) {
 }
 
 async function updateControls(domIdPrefix) {
-    if (frameOffsets == null) {
-        return;
-    }
     var size = parseInt(document.getElementById(domIdPrefix + "cropSize").value);
     var thumbnailX = document.getElementById(domIdPrefix + "cropCenterX");
     var thumbnailY = document.getElementById(domIdPrefix + "cropCenterY");
@@ -290,6 +287,9 @@ async function updateControls(domIdPrefix) {
     if (centerY > maxThumbnailY) {
         centerY = maxThumbnailY;
         thumbnailY.value = centerY;
+    }
+    if (frameOffsets == null) {
+        return;
     }
     updatePreview(domIdPrefix);
 }
