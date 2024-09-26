@@ -725,11 +725,11 @@ async function updateFilter() {
     });
     for (const video of videoList) {
         let tr = document.createElement('tr');
+        tr.classList.add("video-row");
         let td = document.createElement('td');
         td.classList.add("p-2");
         let row = document.createElement('div');
         row.classList.add("row");
-        row.classList.add("video-row");
 
         let imgCol = document.createElement('div');
         imgCol.classList.add("text-center");
@@ -759,7 +759,7 @@ async function updateFilter() {
         webpEl.fetchPriority = "low";
         webpEl.style = "width:128px;";
         imgA.appendChild(webpEl);
-        row.addEventListener("mouseenter", function() {
+        tr.addEventListener("mouseenter", function() {
             webpEl.src = videoStorageClientUrl + "/webp/" + video.id + ".webp";
         });
 
