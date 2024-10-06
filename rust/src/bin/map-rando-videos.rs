@@ -944,6 +944,7 @@ async fn list_users(app_data: web::Data<AppData>) -> actix_web::Result<impl Resp
 enum ListVideosSortBy {
     SubmittedTimestamp,
     UpdatedTimestamp,
+    LogicOrder,
 }
 
 #[derive(Deserialize)]
@@ -1062,6 +1063,9 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
         }
         ListVideosSortBy::UpdatedTimestamp => {
             sql_parts.push("ORDER BY v.updated_ts DESC\n".to_string());
+        }
+        ListVideosSortBy::LogicOrder => {
+            sql_parts.push("ORDER BY r.area_id, r.name, v.from_node_id, v.to_node_id, v.strat_id\n".to_string());
         }
     }
 
