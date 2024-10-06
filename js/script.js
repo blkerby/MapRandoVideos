@@ -816,6 +816,13 @@ async function updateFilter() {
             textCol.appendChild(pStrat);    
         }
 
+        if (video.priority !== null) {
+            let pPriority = document.createElement('p');
+            pPriority.classList.add("m-0");
+            pPriority.innerText = `Priority: ${video.priority}`;
+            textCol.appendChild(pPriority);
+        }
+
         if (video.note !== "") {
             let pNote = document.createElement('p');
             pNote.classList.add("m-0");
@@ -982,6 +989,9 @@ async function openEditVideo(id) {
     highlightEndT.value = video.highlight_end_t;
     highlightEndT.removeAttribute("max");
 
+    let priority = document.getElementById("edit-priority");
+    priority.value = video.priority;
+
     let status = document.getElementById("editStatus");
     status.value = video.status;
     updateEditStatus();
@@ -1040,6 +1050,7 @@ async function submitEditVideo() {
         thumbnail_t: tryParseInt(document.getElementById("edit-thumbnailTime").value),
         highlight_start_t: tryParseInt(document.getElementById("edit-highlightStartTime").value),
         highlight_end_t: tryParseInt(document.getElementById("edit-highlightEndTime").value),
+        priority: tryParseInt(document.getElementById("edit-priority").value)
     };
     var json = JSON.stringify(req);
 

@@ -625,6 +625,7 @@ struct EditVideoRequest {
     highlight_start_t: i32,
     highlight_end_t: i32,
     status: VideoStatus,
+    priority: Option<i32>,
 }
 
 async fn try_edit_video(
@@ -688,7 +689,8 @@ async fn try_edit_video(
             crop_center_y=$11,
             thumbnail_t=$12,
             highlight_start_t=$13,
-            highlight_end_t=$14
+            highlight_end_t=$14,
+            priority=$15
         WHERE id=$1
     "#;
     let stmt = db_client.prepare_cached(sql).await?;
@@ -711,6 +713,7 @@ async fn try_edit_video(
                 &req.thumbnail_t,
                 &req.highlight_start_t,
                 &req.highlight_end_t,
+                &req.priority,
             ],
         )
         .await?;
@@ -987,6 +990,7 @@ struct VideoListing {
     from_node_name: Option<String>,
     to_node_name: Option<String>,
     strat_name: Option<String>,
+    priority: Option<i32>,
 }
 
 async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<Vec<VideoListing>> {
@@ -1005,6 +1009,7 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
             v.strat_id,
             v.note,
             v.status,
+            v.priority,
             r.name as room_name,
             f.name as from_node_name,
             t.name as to_node_name,
@@ -1065,7 +1070,7 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
             sql_parts.push("ORDER BY v.updated_ts DESC\n".to_string());
         }
         ListVideosSortBy::LogicOrder => {
-            sql_parts.push("ORDER BY r.area_id, r.name, v.from_node_id, v.to_node_id, v.strat_id\n".to_string());
+            sql_parts.push("ORDER BY r.area_id, r.name, v.from_node_id, v.to_node_id, v.strat_id, v.priority\n".to_string());
         }
     }
 
@@ -1104,6 +1109,7 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
             from_node_name: row.get("from_node_name"),
             to_node_name: row.get("to_node_name"),
             strat_name: row.get("strat_name"),
+            priority: row.get("priority"),
         });
     }
 
@@ -1142,6 +1148,7 @@ struct GetVideoResponse {
     highlight_end_t: i32,
     status: VideoStatus,
     permanent: bool,
+    priority: Option<i32>,
 }
 
 #[get("/get-video")]
@@ -1164,7 +1171,8 @@ async fn get_video(
             highlight_start_t,
             highlight_end_t,
             status,
-            permanent
+            permanent,
+            priority
         FROM video
         WHERE id = $1
     "#;
@@ -1197,6 +1205,7 @@ async fn get_video(
         highlight_start_t: row.get("highlight_start_t"),
         highlight_end_t: row.get("highlight_end_t"),
         permanent: row.get("permanent"),
+        priority: row.get("priority"),
     };
     Ok(web::Json(response))
 }

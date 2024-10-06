@@ -31,7 +31,8 @@ CREATE TABLE video (
     thumbnail_processed_ts timestamptz,
     highlight_processed_ts timestamptz,
     full_video_processed_ts timestamptz,
-    permanent boolean NOT NULL default false
+    permanent boolean NOT NULL default false,
+    priority integer
 );
 
 --- Extract of essential metadata from sm-json-data, kept up-to-date by `sm-json-data-updater`:
