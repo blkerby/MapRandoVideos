@@ -588,6 +588,7 @@ async function submitVideo() {
         to_node_id: tryParseInt(formData.get("to_node_id")),
         strat_id: tryParseInt(formData.get("strat_id")),
         note: formData.get("note"),
+        dev_note: formData.get("dev_note"),
         crop_size: tryParseInt(formData.get("crop_size")),
         crop_center_x: tryParseInt(formData.get("crop_center_x")),
         crop_center_y: tryParseInt(formData.get("crop_center_y")),
@@ -830,6 +831,13 @@ async function updateFilter() {
             textCol.appendChild(pNote);    
         }
 
+        if (video.dev_note !== "") {
+            let pDevNote = document.createElement('p');
+            pDevNote.classList.add("m-0");
+            pDevNote.innerText = `Dev Note: ${video.dev_note}`;
+            textCol.appendChild(pDevNote);    
+        }
+
         let shareCol = document.createElement('div');
         shareCol.classList.add("col-md-2");
         shareCol.classList.add("text-end");
@@ -968,6 +976,9 @@ async function openEditVideo(id) {
     let note = document.getElementById("editNote");
     note.value = video.note;
 
+    let devNote = document.getElementById("editDevNote");
+    devNote.value = video.dev_note;
+
     let cropSize = document.getElementById("edit-cropSize");
     cropSize.value = video.crop_size;
 
@@ -1044,6 +1055,7 @@ async function submitEditVideo() {
         to_node_id: tryParseInt(document.getElementById("editToNode").value),
         strat_id: tryParseInt(document.getElementById("editStrat").value),
         note: document.getElementById("editNote").value,
+        dev_note: document.getElementById("editDevNote").value,
         crop_size: tryParseInt(document.getElementById("edit-cropSize").value),
         crop_center_x: tryParseInt(document.getElementById("edit-cropCenterX").value),
         crop_center_y: tryParseInt(document.getElementById("edit-cropCenterY").value),

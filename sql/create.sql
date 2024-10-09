@@ -22,6 +22,7 @@ CREATE TABLE video (
     to_node_id integer,
     strat_id integer,
     note varchar(10000) NOT NULL default '',
+    dev_note varchar(10000) NOT NULL default '',
     crop_size integer,
     crop_center_x integer,
     crop_center_y integer,

@@ -8,51 +8,59 @@
             <form id="editForm" class="needs-validation" novalidate>
                 <div class="modal-body">
                     <div class="row my-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 text-sm-end">
                             <label for="editRoom" class="col-form-label">Room</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
+                        <div class="col-lg-10">
                             <select id="editRoom" class="form-select" onchange="updateNodeOptions('editRoom', 'editFromNode', 'editToNode', 'editStrat')" autocomplete="off">
                                 <option value="">Select a room</option>
                             </select>    
                         </div>
                     </div>
                     <div class="row my-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 text-sm-end">
                             <label for="editFromNode" class="col-form-label">From</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
+                        <div class="col-lg-10">
                             <select id="editFromNode" class="form-select" onchange="updateStratOptions('editRoom', 'editStrat', 'editFromNode', 'editToNode')" autocomplete="off">
                                 <option value="">Select "from" node</option>
                             </select>
                         </div>
                     </div>
                     <div class="row my-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 text-sm-end">
                             <label for="editToNode" class="col-form-label">To</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
+                        <div class="col-lg-10">
                             <select id="editToNode" class="form-select" onchange="updateStratOptions('editRoom', 'editStrat', 'editFromNode', 'editToNode')" autocomplete="off">
                                 <option value="">Select "to" node</option>
                             </select>
                         </div>
                     </div>
                     <div class="row my-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 text-sm-end">
                             <label for="editStrat" class="col-form-label">Strat</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
+                        <div class="col-lg-10">
                             <select id="editStrat" class="form-select" autocomplete="off">
                                 <option value="">Select strat</option>
                             </select>
                         </div>
                     </div>
                     <div class="row my-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 text-sm-end">
                             <label for="editNote" class="col-form-label">Note</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
-                            <textarea id="editNote" class="form-control" maxlength=8000 autocomplete="off"></textarea>
+                        <div class="col-lg-10">
+                            <textarea id="editNote" class="form-control" rows=1 maxlength=8000 autocomplete="off"></textarea>
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-lg-2 text-sm-end">
+                            <label for="editDevNote" class="col-form-label">Dev Note</label>
+                        </div>
+                        <div class="col-lg-10">
+                            <textarea id="editDevNote" class="form-control" rows=2 maxlength=8000 autocomplete="off"></textarea>
                         </div>
                     </div>
                     <div class="row my-2">

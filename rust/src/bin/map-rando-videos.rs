@@ -432,6 +432,7 @@ struct SubmitVideoRequest {
     to_node_id: Option<i32>,
     strat_id: Option<i32>,
     note: String,
+    dev_note: String,
     crop_size: i32,
     crop_center_x: i32,
     crop_center_y: i32,
@@ -471,7 +472,7 @@ async fn try_submit_video(
 
     let sql = r#"
         UPDATE video
-        SET status = $14,
+        SET status = $15,
             updated_ts=current_timestamp,
             submitted_ts=current_timestamp,
             room_id=$2,
@@ -479,13 +480,14 @@ async fn try_submit_video(
             to_node_id=$4,
             strat_id=$5,
             note=$6,
-            crop_size=$7,
-            crop_center_x=$8,
-            crop_center_y=$9,
-            thumbnail_t=$10,
-            highlight_start_t=$11,
-            highlight_end_t=$12
-        WHERE id=$13 AND created_account_id=$1 AND next_part_num = num_parts
+            dev_note=$7,
+            crop_size=$8,
+            crop_center_x=$9,
+            crop_center_y=$10,
+            thumbnail_t=$11,
+            highlight_start_t=$12,
+            highlight_end_t=$13
+        WHERE id=$14 AND created_account_id=$1 AND next_part_num = num_parts
     "#;
     let stmt = db_client.prepare_cached(sql).await?;
     let cnt = db_client
@@ -498,6 +500,7 @@ async fn try_submit_video(
                 &req.to_node_id,
                 &req.strat_id,
                 &req.note,
+                &req.dev_note,
                 &req.crop_size,
                 &req.crop_center_x,
                 &req.crop_center_y,
@@ -618,6 +621,7 @@ struct EditVideoRequest {
     to_node_id: Option<i32>,
     strat_id: Option<i32>,
     note: String,
+    dev_note: String,
     crop_size: i32,
     crop_center_x: i32,
     crop_center_y: i32,
@@ -684,13 +688,14 @@ async fn try_edit_video(
             to_node_id=$6,
             strat_id=$7,
             note=$8,
-            crop_size=$9,
-            crop_center_x=$10,
-            crop_center_y=$11,
-            thumbnail_t=$12,
-            highlight_start_t=$13,
-            highlight_end_t=$14,
-            priority=$15
+            dev_note=$9,
+            crop_size=$10,
+            crop_center_x=$11,
+            crop_center_y=$12,
+            thumbnail_t=$13,
+            highlight_start_t=$14,
+            highlight_end_t=$15,
+            priority=$16
         WHERE id=$1
     "#;
     let stmt = db_client.prepare_cached(sql).await?;
@@ -707,6 +712,7 @@ async fn try_edit_video(
                 &req.to_node_id,
                 &req.strat_id,
                 &req.note,
+                &req.dev_note,
                 &req.crop_size,
                 &req.crop_center_x,
                 &req.crop_center_y,
@@ -985,6 +991,7 @@ struct VideoListing {
     to_node_id: Option<i32>,
     strat_id: Option<i32>,
     note: String,
+    dev_note: String,
     status: VideoStatus,
     room_name: Option<String>,
     from_node_name: Option<String>,
@@ -1008,6 +1015,7 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
             v.to_node_id,
             v.strat_id,
             v.note,
+            v.dev_note,
             v.status,
             v.priority,
             r.name as room_name,
@@ -1104,6 +1112,7 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
             to_node_id: row.get("to_node_id"),
             strat_id: row.get("strat_id"),
             note: row.get("note"),
+            dev_note: row.get("dev_note"),
             status: VideoStatus::try_from(status_str.as_str())?,
             room_name: row.get("room_name"),
             from_node_name: row.get("from_node_name"),
@@ -1140,6 +1149,7 @@ struct GetVideoResponse {
     to_node_id: Option<i32>,
     strat_id: Option<i32>,
     note: String,
+    dev_note: String,
     crop_size: i32,
     crop_center_x: i32,
     crop_center_y: i32,
@@ -1164,6 +1174,7 @@ async fn get_video(
             to_node_id,
             strat_id,
             note,
+            dev_note,
             crop_size,
             crop_center_x,
             crop_center_y,
@@ -1197,6 +1208,7 @@ async fn get_video(
         to_node_id: row.get("to_node_id"),
         strat_id: row.get("strat_id"),
         note: row.get("note"),
+        dev_note: row.get("dev_note"),
         status: VideoStatus::try_from(status_str.as_str()).unwrap(),
         crop_size: row.get("crop_size"),
         crop_center_x: row.get("crop_center_x"),

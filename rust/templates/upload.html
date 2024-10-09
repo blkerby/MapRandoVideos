@@ -8,59 +8,67 @@
             <form id="uploadForm" class="needs-validation">
                 <div class="modal-body">
                     <div class="row mb-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 text-sm-end">
                             <label for="videoFile" class="col-form-label">Video</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
+                        <div class="col-lg-10">
                             <input id="videoFile" type="file" class="form-control" name="video_file" accept=".avi" onchange="updateFile()" autocomplete="off" required multiple>
                         </div>
                     </div>
                     <div class="row my-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 text-sm-end">
                             <label for="room" class="col-form-label">Room</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
+                        <div class="col-lg-10">
                             <select id="room" class="form-select" name="room_id" onchange="updateNodeOptions('room', 'fromNode', 'toNode', 'strat')" autocomplete="off">
                                 <option value="">Select a room</option>
                             </select>    
                         </div>
                     </div>
                     <div class="row my-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 text-sm-end">
                             <label for="fromNode" class="col-form-label">From</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
+                        <div class="col-lg-10">
                             <select id="fromNode" class="form-select" name="from_node_id" onchange="updateStratOptions('room', 'strat', 'fromNode', 'toNode')" autocomplete="off">
                                 <option value="">Select "from" node</option>
                             </select>
                         </div>
                     </div>
                     <div class="row my-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 text-sm-end">
                             <label for="toNode" class="col-form-label">To</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
+                        <div class="col-lg-10">
                             <select id="toNode" class="form-select" name="to_node_id" onchange="updateStratOptions('room', 'strat', 'fromNode', 'toNode')" autocomplete="off">
                                 <option value="">Select "to" node</option>
                             </select>
                         </div>
                     </div>
                     <div class="row my-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 text-sm-end">
                             <label for="strat" class="col-form-label">Strat</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
+                        <div class="col-lg-10">
                             <select id="strat" class="form-select" name="strat_id" autocomplete="off">
                                 <option value="">Select strat</option>
                             </select>
                         </div>
                     </div>
                     <div class="row my-2">
-                        <div class="col-lg-1 col-sm-2 text-sm-end">
+                        <div class="col-lg-2 col-sm-2 text-sm-end">
                             <label for="note" class="col-form-label">Note</label>
                         </div>
-                        <div class="col-lg-11 col-sm-10">
-                            <textarea id="note" class="form-control" name="note" maxlength=8000 autocomplete="off"></textarea>
+                        <div class="col-lg-10 col-sm-10">
+                            <textarea id="note" class="form-control" name="note" rows=1 maxlength=8000 autocomplete="off"></textarea>
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-lg-2 col-sm-2 text-sm-end">
+                            <label for="devNote" class="col-form-label">Dev Note</label>
+                        </div>
+                        <div class="col-lg-10 col-sm-10">
+                            <textarea id="devNote" class="form-control" name="dev_note" rows=2 maxlength=8000 autocomplete="off"></textarea>
                         </div>
                     </div>
                     <div class="row my-2">
