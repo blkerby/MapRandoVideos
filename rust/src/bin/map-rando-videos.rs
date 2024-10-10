@@ -1489,6 +1489,7 @@ async fn update_tech(
 #[derive(Serialize)]
 struct NotableListing {
     room_id: i32,
+    room_name: String,
     notable_id: i32,
     name: String,
     difficulty: String,
@@ -1502,6 +1503,7 @@ async fn try_list_notables(app_data: &AppData) -> Result<Vec<NotableListing>> {
             r#"
       SELECT 
         n.room_id,
+        r.name as room_name,
         n.notable_id,
         n.name,
         s.difficulty,
@@ -1516,12 +1518,14 @@ async fn try_list_notables(app_data: &AppData) -> Result<Vec<NotableListing>> {
     let mut notable_listings: Vec<NotableListing> = vec![];
     for row in tech_rows {
         let room_id: i32 = row.get("room_id");
+        let room_name: String = row.get("room_name");
         let notable_id: i32 = row.get("notable_id");
         let name: String = row.get("name");
         let difficulty: Option<String> = row.get("difficulty");
         let video_id: Option<i32> = row.get("video_id");
         notable_listings.push(NotableListing {
             room_id,
+            room_name,
             notable_id,
             name,
             difficulty: difficulty.unwrap_or("Uncategorized".to_string()),

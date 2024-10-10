@@ -1322,7 +1322,7 @@ async function populateNotables() {
             notableNameRow.classList.add("m-2");
             let notableNameP = document.createElement('p');
             let notableNameB = document.createElement('b');
-            notableNameB.innerText = notable["name"];
+            notableNameB.innerText = `${notable["room_name"]}: ${notable["name"]}`;
             notableNameP.appendChild(notableNameB);
             notableNameRow.appendChild(notableNameP);
             textCol.appendChild(notableNameRow);
