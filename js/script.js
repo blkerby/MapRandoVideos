@@ -12,6 +12,7 @@ var startUploadKey = null;
 var finishUploadKey = null;
 var submitting = false;
 var userMapping = null;
+var controlsUpdated = false;
 var updatedTech = new Set();
 var updatedNotables = new Set();
 
@@ -254,6 +255,7 @@ async function updatePreview(domIdPrefix) {
 }
 
 async function updateControls(domIdPrefix) {
+    controlsUpdated = true;
     var size = parseInt(document.getElementById(domIdPrefix + "cropSize").value);
     var thumbnailX = document.getElementById(domIdPrefix + "cropCenterX");
     var thumbnailY = document.getElementById(domIdPrefix + "cropCenterY");
@@ -1028,6 +1030,7 @@ async function openEditVideo(id) {
     }
 
     updateControls('edit-');
+    controlsUpdated = false;
     let editModal = new bootstrap.Modal(document.getElementById("editModal"));
     editModal.show();
 }
@@ -1062,7 +1065,8 @@ async function submitEditVideo() {
         thumbnail_t: tryParseInt(document.getElementById("edit-thumbnailTime").value),
         highlight_start_t: tryParseInt(document.getElementById("edit-highlightStartTime").value),
         highlight_end_t: tryParseInt(document.getElementById("edit-highlightEndTime").value),
-        priority: tryParseInt(document.getElementById("edit-priority").value)
+        priority: tryParseInt(document.getElementById("edit-priority").value),
+        controls_updated: controlsUpdated,
     };
     var json = JSON.stringify(req);
 

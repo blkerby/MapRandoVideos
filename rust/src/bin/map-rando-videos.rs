@@ -630,6 +630,7 @@ struct EditVideoRequest {
     highlight_end_t: i32,
     status: VideoStatus,
     priority: Option<i32>,
+    controls_updated: bool,
 }
 
 async fn try_edit_video(
@@ -725,49 +726,50 @@ async fn try_edit_video(
         .await?;
     info!("Edited video");
 
-    // Send messages to RabbitMQ to trigger processes to encode the thumbnail image and animated highlight.
-    // The full video cannot change, so no need to encode it again. We could optimize this by checking if
-    // thumbnail and/or highlight actually need to be recomputed, but it's cheap so we don't bother for now.
-    let mq = app_data.mq.get().await?;
-    let channel = mq.create_channel().await?;
-    let props = lapin::BasicProperties::default().with_delivery_mode(2); // persistent delivery
+    if req.controls_updated {
+        // Send messages to RabbitMQ to trigger processes to encode the thumbnail image and animated highlight.
+        // The full video cannot change, so no need to encode it again.
+        let mq = app_data.mq.get().await?;
+        let channel = mq.create_channel().await?;
+        let props = lapin::BasicProperties::default().with_delivery_mode(2); // persistent delivery
 
-    let thumbnail_task = EncodingTask::ThumbnailImage {
-        video_id: req.video_id,
-        num_parts,
-        crop_center_x: req.crop_center_x,
-        crop_center_y: req.crop_center_y,
-        crop_size: req.crop_size,
-        frame_number: req.thumbnail_t,
-    };
-    channel
-        .basic_publish(
-            "",
-            &app_data.args.rabbit_queue,
-            lapin::options::BasicPublishOptions::default(),
-            &serde_json::to_vec(&thumbnail_task)?,
-            props.clone(),
-        )
-        .await?;
+        let thumbnail_task = EncodingTask::ThumbnailImage {
+            video_id: req.video_id,
+            num_parts,
+            crop_center_x: req.crop_center_x,
+            crop_center_y: req.crop_center_y,
+            crop_size: req.crop_size,
+            frame_number: req.thumbnail_t,
+        };
+        channel
+            .basic_publish(
+                "",
+                &app_data.args.rabbit_queue,
+                lapin::options::BasicPublishOptions::default(),
+                &serde_json::to_vec(&thumbnail_task)?,
+                props.clone(),
+            )
+            .await?;
 
-    let highlight_task = EncodingTask::HighlightAnimation {
-        video_id: req.video_id,
-        num_parts,
-        crop_center_x: req.crop_center_x,
-        crop_center_y: req.crop_center_y,
-        crop_size: req.crop_size,
-        start_frame_number: req.highlight_start_t,
-        end_frame_number: req.highlight_end_t,
-    };
-    channel
-        .basic_publish(
-            "",
-            &app_data.args.rabbit_queue,
-            lapin::options::BasicPublishOptions::default(),
-            &serde_json::to_vec(&highlight_task)?,
-            props.clone(),
-        )
-        .await?;
+        let highlight_task = EncodingTask::HighlightAnimation {
+            video_id: req.video_id,
+            num_parts,
+            crop_center_x: req.crop_center_x,
+            crop_center_y: req.crop_center_y,
+            crop_size: req.crop_size,
+            start_frame_number: req.highlight_start_t,
+            end_frame_number: req.highlight_end_t,
+        };
+        channel
+            .basic_publish(
+                "",
+                &app_data.args.rabbit_queue,
+                lapin::options::BasicPublishOptions::default(),
+                &serde_json::to_vec(&highlight_task)?,
+                props.clone(),
+            )
+            .await?;
+    }
     Ok(())
 }
 
