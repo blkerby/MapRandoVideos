@@ -1513,7 +1513,7 @@ async fn try_list_notables(app_data: &AppData) -> Result<Vec<NotableListing>> {
       FROM notable n
       LEFT JOIN room r on r.room_id = n.room_id
       LEFT JOIN notable_setting s ON s.room_id = n.room_id AND s.notable_id = n.notable_id
-      ORDER BY r.area_id, room_id, notable_id"#,
+      ORDER BY r.area_id, room_name, notable_id"#,
         )
         .await?;
     let tech_rows = db.query(&stmt, &[]).await?;
