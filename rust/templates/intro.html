@@ -15,12 +15,13 @@ Interested in contributing? Check out the
                 <p>Here are some things to keep in mind while creating your videos:
                 <ul>
                     <li>Video must be in uncompressed AVI format, captured directly from an accurate emulator.</li>
-                    <li>Video must have the native resolution (256 x 224, 60.1 fps) and game audio only.</li>
+                    <li>Avoid external capture, e.g. using OBS or CamStudio, as it will have quality problems.</li>
+                    <li>See <a href="#" data-bs-toggle="modal" data-bs-target="#emulatorModal">here</a> for detailed emulator-specific instructions.</li>
                     <li>Use the <a href="https://smpractice.speedga.me/">Practice ROM</a> to show inputs, and use InfoHUD to show other relevant info if applicable.</li>
                     <li>Set the frame counters to "INGAME".</li>
                     <li>It is recommended to apply the <a href="https://github.com/blkerby/MapRandomizer/raw/main/patches/ips/fast_pause_menu.ips">fast pause menu</a> patch, to help make the videos more concise.</li>
                     <li>If a strat involves a setup from a previous room, include this as part of the video.</li>
-                    <li>Where relevant, pause and show the equipment screen at the end of the video.</li>
+                    <li>Pause and show the equipment screen at the end of the video (unless already shown as part of the strat).</li>
                 </ul>
 
                 <p>Tips for filling out the upload form:
@@ -30,6 +31,83 @@ Interested in contributing? Check out the
                     <li>A preview will be shown for a thumbnail image and animated highlight. Adjust these to focus on key moments of the strat. Between 3 and 10 seconds is typically a good length for a highlight.</li>
                     <li>All submissions can be edited later and will be reviewed before being integrated into the randomizer site, so no need to worry about any mistakes!</li>
                 </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="emulatorModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5">Emulator-specific guidelines</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>The recommended process is to first create a "movie" recording and then convert it to an AVI while playing it back within the emulator.<a href="#footnote-movie"><sup>1</sup></a> This way you can retry the strat as many times as you like, by loading from a save state, without having to manually restart the recording every time and without having to trim down the video at the end.</p>
+
+                <p>Find the details for your emulator below:</p>
+
+                <h5>Snes9x</h5>
+                <ul>
+                    <li>Get set up in the place where you want the recording to begin</li>
+                    <li>Pause the emulator</li>
+                    <li>File > Movie record</li>
+                    <li>Create a save state</li>
+                    <li>Unpause the emulator</li>
+                    <li>Attempt the strat</li>
+                    <li>Load from the save state as many times as needed</li>
+                    <li>After success, pause emulator (remember to show the equipment screen first)</li>
+                    <li>File > Movie Stop</li>
+                    <li>File > Movie Play</li>
+                    <li>File > Start AVI Recording: select Full Frames (Uncompressed)</li>
+                    <li>Unpause the emulator</li>
+                    <li>Pause the emulator when the movie reaches the desired stopping point</li>
+                    <li>File > Stop AVI Recording</li>
+                </ul>
+
+                <h5>BizHawk</h5>
+                <ul>
+                    <li>Get set up in the place where you want the recording to begin</li>
+                    <li>Pause the emulator</li>
+                    <li>File > Movie > Record Movie: select "Record From: Now"</li>
+                    <li>Create a save state</li>
+                    <li>Unpause the emulator</li>
+                    <li>Attempt the strat</li>
+                    <li>Load from the save state as many times as needed</li>
+                    <li>After success, pause emulator (remember to show the equipment screen first)</li>
+                    <li>File > Movie > Stop Movie</li>
+                    <li>File > Movie > Play Movie</li>
+                    <li>File > AVI/WAV > Config and Record AVI/WAV: select "AVI writer" and "Full frames (Uncompressed)"</li>
+                    <li>Unpause the emulator</li>
+                    <li>Pause the emulator when the movie reaches the desired stopping point</li>
+                    <li>File > AVI/WAV > Stop AVI/WAV</li>
+                </ul>
+
+                <h5>Mesen2</h5>
+                <ul>
+                    <li>Get set up in the place where you want the recording to begin</li>
+                    <li>Create a save state, and load from it.</li>
+                    <li>Attempt the strat</li>
+                    <li>Load from the save state as many times as needed, until successfully doing the strat</li>
+                    <li>Load from the save state one more time (remember to show the equipment screen first)</li>
+                    <li>Wait a few seconds, then pause the emulator.</li>
+                    <li>Tools > History Viewer: export a movie (.MMO) of the segment</li>
+                    <li>Tools > Movies > Play: select the movie that you just exported</li>
+                    <li>Tools > Video Recorder > Record</li>
+                    <li>Unpause the emulator</li>
+                    <li>Pause the emulator when the movie reaches the desired stopping point</li>
+                    <li>Tools > Video Recorder > Stop</li>
+                </ul>
+
+                <hr>
+                <a id="footnote-movie">
+                <p><small>
+                <sup>1</sup>A "movie" is a recording of the sequence of inputs (along with a starting save state of the SNES RAM), so it will be a tiny file compared to the AVI which contains the rendered video and audio. 
+                </small></p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
