@@ -651,13 +651,23 @@ async fn try_edit_video(
                 bail!("Not authorized to set this video as Approved");
             }
 
-            let sql = "SELECT updated_account_id FROM video WHERE id=$1";
+            let sql = r#"
+                SELECT
+                    status,
+                    created_account_id 
+                FROM video WHERE id=$1
+            "#;
             let stmt = db_client.prepare_cached(&sql).await?;
             let row = db_client.query_one(&stmt, &[&req.video_id]).await?;
-            let updated_account_id: i32 = row.get(0);
-            if updated_account_id != account_info.id {
+            let status_str: String = row.get("status");
+            let status = VideoStatus::try_from(status_str.as_str())?;
+            let created_account_id: i32 = row.get("created_account_id");
+            if status == VideoStatus::Approved {
                 // It would be more "correct" to return 403 here (and 404 in case the row doesn't exist).
-                bail!("Not authorized to edit this video");
+                bail!("Not authorized to edit Approved video");
+            }
+            if created_account_id != account_info.id {
+                bail!("Not authorized to edit video by different creator");
             }
         }
     }
@@ -819,14 +829,23 @@ async fn delete_video(
 
     // Check that the user is authorized to delete this video:
     let db_client = app_data.db.get().await.unwrap();
-    let sql = "SELECT updated_account_id, permanent FROM video WHERE id=$1";
+    let sql = r#"
+        SELECT 
+            status,
+            created_account_id,
+            permanent
+        FROM video WHERE id=$1
+    "#;
     let stmt = db_client.prepare_cached(&sql).await.unwrap();
     let row = db_client
         .query_one(&stmt, &[&req.video_id])
         .await
         .map_err(|e| actix_web::error::ErrorNotFound(e))?;
-    let updated_account_id: i32 = row.get(0);
-    let permanent: bool = row.get(1);
+    let status_str: String = row.get("status");
+    let status = VideoStatus::try_from(status_str.as_str())
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    let created_account_id: i32 = row.get("created_account_id");
+    let permanent: bool = row.get("permanent");
     if permanent {
         return Err(actix_web::error::ErrorForbidden(
             "video is permanent and may not be deleted",
@@ -837,10 +856,15 @@ async fn delete_video(
             // Editors are authorized to delete any non-permanent video, so no check needed.
         }
         Permission::Default => {
-            // Other users are only authorized to delete their own videos.
-            if updated_account_id != account_info.id {
+            // Other users are only authorized to delete their own videos, and only ones not yet Approved.
+            if status == VideoStatus::Approved {
                 return Err(actix_web::error::ErrorForbidden(
-                    "not permitted to delete this video",
+                    "Not authorized to delete Approved video",
+                ));
+            }
+            if created_account_id != account_info.id {
+                return Err(actix_web::error::ErrorForbidden(
+                    "not permitted to delete video by other owner",
                 ));
             }
         }

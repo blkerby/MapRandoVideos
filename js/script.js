@@ -858,7 +858,7 @@ async function updateFilter() {
         shareButton.innerHTML = '<i class="bi bi-clipboard"></i> Share';
         shareCol.appendChild(shareButton);
 
-        if (permission == "Editor" || userId == video.updated_user_id) {
+        if (permission == "Editor" || (userId == video.created_user_id && video.status != "Approved")) {
             let editButton = document.createElement('button');
             editButton.classList.add("btn");
             editButton.classList.add("btn-success");
