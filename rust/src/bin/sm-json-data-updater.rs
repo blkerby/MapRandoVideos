@@ -481,30 +481,24 @@ async fn write_notable_strat_table(app_data: &AppData, notable_strats: &[Notable
     Ok(())
 }
 
-async fn update_incomplete_videos(app_data: &AppData) -> Result<()> {
-    // Change videos with invalid or inconsistent IDs to "Incomplete" status.
-    // Except videos that are already "Disabled" are left alone.
+async fn update_node_ids(app_data: &AppData) -> Result<()> {
+    // Update from ID and node ID to match values from their strat, where applicable.
     let db = app_data.db.get().await?;
     let sql = r#"
-        WITH invalid_ids AS (
-            SELECT v.id
-            FROM video v
-            LEFT JOIN room r ON v.room_id = r.room_id 
-            LEFT JOIN node f ON v.room_id = f.room_id AND v.from_node_id = f.node_id
-            LEFT JOIN node t ON v.room_id = t.room_id AND v.to_node_id = t.node_id
-            LEFT JOIN strat s
-              ON v.room_id = s.room_id 
-              AND v.strat_id = s.strat_id
-              AND v.from_node_id = s.from_node_id 
-              AND v.to_node_id = s.to_node_id
-            WHERE r.room_id IS NULL OR f.node_id IS NULL OR t.node_id IS NULL OR s.strat_id IS NULL
-        )
-        UPDATE video SET status = 'Incomplete'
-        WHERE id IN (SELECT id FROM invalid_ids) AND status != 'Disabled'
+        UPDATE video AS v
+        SET
+            from_node_id = s.from_node_id,
+            to_node_id = s.to_node_id
+        FROM strat AS s
+        WHERE
+            v.room_id = s.room_id
+        AND v.strat_id = s.strat_id
+        AND (v.from_node_id != s.from_node_id
+            OR v.to_node_id != s.to_node_id);
     "#;
     let stmt = db.prepare_cached(&sql).await?;
     let cnt = db.execute(&stmt, &[]).await?;
-    info!("{} video(s) updated to 'Incomplete'", cnt);
+    info!("From/to node IDs updated in {} video(s)", cnt);
     Ok(())
 }
 
@@ -519,7 +513,7 @@ async fn update_tables(git_repo: &Repository, app_data: &AppData) -> Result<()> 
     write_tech_table(app_data, &summary.techs).await?;
     write_notable_table(app_data, &summary.notables).await?;
     write_notable_strat_table(app_data, &summary.notable_strats).await?;
-    update_incomplete_videos(app_data).await?;
+    update_node_ids(app_data).await?;
     info!("Successfully rewrote tables");
     Ok(())
 }
