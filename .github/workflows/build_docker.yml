@@ -26,7 +26,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: bkerby/map-rando
+          images: bkerby/map-rando-videos
       -
         name: Build and push
         uses: docker/build-push-action@v3
