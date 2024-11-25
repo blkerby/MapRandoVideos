@@ -17,9 +17,12 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y \
     libssl3 wget xz-utils ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+WORKDIR /
 RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
   && tar xf ffmpeg-release-amd64-static.tar.xz \
-  && cp ffmpeg-7.0.2-amd64-static/ffmpeg /usr/local/bin
+  && cp ffmpeg-7.0.2-amd64-static/ffmpeg /bin/ffmpeg \
+  && rm ffmpeg-release-amd64-static.tar.xz \
+  && rm -rf ffmpeg-7.0.2-amd64-static
 COPY --from=build /rust/target/release/map-rando-videos /bin/map-rando-videos
 COPY --from=build /rust/target/release/video-encoder /bin/video-encoder
 COPY --from=build /rust/target/release/sm-json-data-updater /bin/sm-json-data-updater
