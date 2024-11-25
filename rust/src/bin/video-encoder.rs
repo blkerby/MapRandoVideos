@@ -246,6 +246,11 @@ async fn encode_highlight(
     start_frame_number: i32,
     end_frame_number: i32,
 ) -> Result<()> {
+    if end_frame_number <= start_frame_number {
+        error!("Skipping highlight with invalid frame range: {} - {}", start_frame_number, end_frame_number);
+        return Ok(())
+    }
+
     create_input_pipes(app_data, video_id, num_parts).await?;
 
     let output_path = "/tmp/highlight.webp";
