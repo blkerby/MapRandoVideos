@@ -15,7 +15,7 @@ RUN cargo build --release
 # Now restart with a slim base image and just copy over the binary and data needed at runtime.
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y \
-    libssl3 wget ca-certificates \
+    libssl3 wget xz-utils ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
   && tar xf ffmpeg-release-amd64-static.tar.xz \
