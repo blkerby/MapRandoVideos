@@ -15,8 +15,11 @@ RUN cargo build --release
 # Now restart with a slim base image and just copy over the binary and data needed at runtime.
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y \
-    libssl3 ffmpeg ca-certificates \
+    libssl3 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+  && tar xf ffmpeg-release-amd64-static.tar.xz \
+  && cp ffmpeg-7.0.2-amd64-static/ffmpeg /usr/local/bin
 COPY --from=build /rust/target/release/map-rando-videos /bin/map-rando-videos
 COPY --from=build /rust/target/release/video-encoder /bin/video-encoder
 COPY --from=build /rust/target/release/sm-json-data-updater /bin/sm-json-data-updater
