@@ -240,6 +240,7 @@ async function updatePreview(domIdPrefix) {
 
     var highlightEnd = document.getElementById(domIdPrefix + "highlightEnd");
     var highlightEndTime = document.getElementById(domIdPrefix + "highlightEndTime");
+    highlightEndTime.min = parseInt(highlightStartTime.value) + 1;
     if (highlightEndTime.value != "") {
         var t = parseInt(highlightEndTime.value);
         if (t > frameOffsets.length - 1) {
@@ -933,6 +934,7 @@ async function editShowPreview() {
     highlightStartTime.max = frameOffsets.length - 1;
 
     var highlightEndTime = document.getElementById("edit-highlightEndTime")
+    highlightEndTime.min = parseInt(highlightStartTime.value) + 1;
     highlightEndTime.max = frameOffsets.length - 1;
 
     document.getElementById("edit-show-preview").classList.add("d-none");
