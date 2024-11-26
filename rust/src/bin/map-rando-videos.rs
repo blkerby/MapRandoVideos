@@ -1700,6 +1700,8 @@ async fn main() {
         .format_timestamp_millis()
         .init();
 
+    info!("Working directory: {}", std::env::current_dir().unwrap().to_str().unwrap());
+
     let app_data = actix_web::web::Data::new(build_app_data().await);
 
     HttpServer::new(move || {
