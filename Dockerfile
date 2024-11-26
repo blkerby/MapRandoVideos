@@ -23,11 +23,11 @@ RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.t
   && cp ffmpeg-7.0.2-amd64-static/ffmpeg /bin/ffmpeg \
   && rm ffmpeg-release-amd64-static.tar.xz \
   && rm -rf ffmpeg-7.0.2-amd64-static
-COPY --from=build /rust/target/release/map-rando-videos /bin/map-rando-videos
-COPY --from=build /rust/target/release/video-encoder /bin/video-encoder
-COPY --from=build /rust/target/release/sm-json-data-updater /bin/sm-json-data-updater
-COPY --from=build /rust/target/release/trigger-encode-all /bin/trigger-encode-all
+COPY --from=build /rust/target/release/map-rando-videos /app/map-rando-videos
+COPY --from=build /rust/target/release/video-encoder /app/video-encoder
+COPY --from=build /rust/target/release/sm-json-data-updater /app/sm-json-data-updater
+COPY --from=build /rust/target/release/trigger-encode-all /app/trigger-encode-all
 COPY /js /js
 COPY /static /static
-WORKDIR /bin
-ENTRYPOINT ["/bin/map-rando-videos"]
+WORKDIR /app
+ENTRYPOINT ["/app/map-rando-videos"]
