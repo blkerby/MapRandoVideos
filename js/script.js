@@ -7,6 +7,9 @@ var animationDomPrefix = null;
 var animationFrameResolution = 3;
 var animationFrame = 0;
 var videoId = null;
+var videoList = [];
+var videoLimitIncrement = 50;
+var videoLimit = videoLimitIncrement;
 var numVideoParts = null;
 var startUploadKey = null;
 var finishUploadKey = null;
@@ -656,13 +659,189 @@ async function updateUserList() {
     }
 }
 
+function loadVideo(video, userId, permission, dateFormat, videoTableBody) {
+    let tr = document.createElement('tr');
+    tr.classList.add("video-row");
+    let td = document.createElement('td');
+    td.classList.add("p-2");
+    let row = document.createElement('div');
+    row.classList.add("row");
+
+    let imgCol = document.createElement('div');
+    imgCol.classList.add("text-center");
+    imgCol.classList.add("col-sm-4");
+    imgCol.classList.add("col-md-3");
+    imgCol.classList.add("col-lg-2");
+
+    let imgA = document.createElement('a');
+    imgA.href = "#";
+    let videoUrl = videoStorageClientUrl + "/mp4/" + video.id + ".mp4";
+    imgA.setAttribute("onclick", `startVideo('${videoUrl}');`);
+    imgA.setAttribute("data-bs-toggle", "modal");
+    imgA.setAttribute("data-bs-target", "#videoModal");
+    imgCol.appendChild(imgA);
+
+    let pngEl = document.createElement('img');
+    pngEl.classList.add("png");
+    pngEl.loading = "lazy";
+    pngEl.src = videoStorageClientUrl + "/png/" + video.id + ".png";
+    pngEl.style = "width:128px;";
+    imgA.appendChild(pngEl);
+
+    let webpEl = document.createElement('img');
+    webpEl.classList.add("webp");
+    webpEl.loading = "lazy";
+    webpEl.src = videoStorageClientUrl + "/png/" + video.id + ".png";
+    webpEl.fetchPriority = "low";
+    webpEl.style = "width:128px;";
+    imgA.appendChild(webpEl);
+    tr.addEventListener("mouseenter", function() {
+        webpEl.src = videoStorageClientUrl + "/webp/" + video.id + ".webp";
+    });
+
+    let textCol = document.createElement('div');
+    textCol.classList.add("col-sm-8");
+    textCol.classList.add("col-md-7");
+    textCol.classList.add("col-lg-8");
+
+    let pSubmitted = document.createElement('p');
+    pSubmitted.classList.add("m-0");
+    let createdUsername = userMapping[video.created_user_id];
+    let submittedTime = new Date();
+    submittedTime.setTime(video.submitted_ts);
+    let submittedTimeStr = dateFormat.format(submittedTime);
+    pSubmitted.innerHTML = `Submitted by <i>${createdUsername}</i> on ${submittedTimeStr}`;
+    textCol.appendChild(pSubmitted);
+
+    if (video.updated_ts != video.submitted_ts || video.updated_user_id != video.created_user_id) {
+        let pUpdated = document.createElement('p');
+        pUpdated.classList.add("m-0");
+        let updatedUsername = userMapping[video.updated_user_id];
+        let updatedTime = new Date();
+        updatedTime.setTime(video.updated_ts);
+        let updatedTimeStr = dateFormat.format(updatedTime);
+        pUpdated.innerHTML = `Updated by <i>${updatedUsername}</i> on ${updatedTimeStr}`;
+        textCol.appendChild(pUpdated);    
+    }
+
+    if (video.room_id !== null) {
+        let pRoom = document.createElement('p');
+        pRoom.classList.add("m-0");
+        pRoom.innerText = `Room: ${video.room_name}`;
+        textCol.appendChild(pRoom);    
+    }
+
+    if (video.from_node_id !== null) {
+        let pFromNode = document.createElement('p');
+        pFromNode.classList.add("m-0");
+        pFromNode.innerText = `From ${video.from_node_id}: ${video.from_node_name}`;
+        textCol.appendChild(pFromNode);    
+    }
+
+    if (video.to_node_id !== null) {
+        let pToNode = document.createElement('p');
+        pToNode.classList.add("m-0");
+        pToNode.innerText = `To ${video.to_node_id}: ${video.to_node_name}`;
+        textCol.appendChild(pToNode);
+    }
+
+    if (video.strat_id !== null) {
+        let pStrat = document.createElement('p');
+        pStrat.classList.add("m-0");
+        pStrat.innerText = `Strat ${video.strat_id}: ${video.strat_name}`;
+        textCol.appendChild(pStrat);    
+    }
+
+    if (video.priority !== null) {
+        let pPriority = document.createElement('p');
+        pPriority.classList.add("m-0");
+        pPriority.innerText = `Priority: ${video.priority}`;
+        textCol.appendChild(pPriority);
+    }
+
+    if (video.note !== "") {
+        let pNote = document.createElement('p');
+        pNote.classList.add("m-0");
+        pNote.innerText = `Note: ${video.note}`;
+        textCol.appendChild(pNote);    
+    }
+
+    if (video.dev_note !== "") {
+        let pDevNote = document.createElement('p');
+        pDevNote.classList.add("m-0");
+        pDevNote.innerText = `Dev Note: ${video.dev_note}`;
+        textCol.appendChild(pDevNote);    
+    }
+
+    let shareCol = document.createElement('div');
+    shareCol.classList.add("col-md-2");
+    shareCol.classList.add("text-end");
+
+    let videoIdText = document.createElement('div');
+    videoIdText.innerText = `Id: ${video.id}`;
+    shareCol.appendChild(videoIdText);
+
+    let shareButton = document.createElement('button');
+    shareButton.classList.add("btn");
+    shareButton.classList.add("btn-secondary");
+    shareButton.classList.add("my-1");
+    shareButton.classList.add("mx-1");
+    shareButton.classList.add("mx-md-0")
+    shareButton.setAttribute("onclick", `shareVideoLink(this, ${video.id})`);
+    shareButton.innerHTML = '<i class="bi bi-clipboard"></i> Share';
+    shareCol.appendChild(shareButton);
+
+    if (permission == "Editor" || (userId == video.created_user_id && video.status != "Approved")) {
+        let editButton = document.createElement('button');
+        editButton.classList.add("btn");
+        editButton.classList.add("btn-success");
+        editButton.classList.add("my-1");
+        editButton.classList.add("mx-1");
+        editButton.classList.add("mx-md-0")
+        editButton.setAttribute("onclick", `openEditVideo(${video.id})`);
+        // editButton.setAttribute("data-bs-toggle", "modal");
+        // editButton.setAttribute("data-bs-target", "#editModal");
+        editButton.innerHTML = '<i class="bi bi-pencil"></i> Edit';
+        shareCol.appendChild(editButton);    
+    }
+
+    let pStatus = document.createElement('p');
+    pStatus.classList.add("m-0");
+    pStatus.innerText = `Status: ${video.status}`;
+    shareCol.appendChild(pStatus);
+
+    row.appendChild(imgCol);
+    row.appendChild(textCol);
+    row.appendChild(shareCol);
+    td.appendChild(row);
+    tr.appendChild(td);
+    videoTableBody.appendChild(tr);
+}
+
+async function loadVideoBatch(oldVideoLimit, newVideoLimit) {
+    let userId = localStorage.getItem("userId");
+    let permission = localStorage.getItem("permission");
+    let videoTableBody = document.getElementById("videoTableBody");
+    let dateFormat = new Intl.DateTimeFormat(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour12: false,
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+
+    for (var i = oldVideoLimit; i < newVideoLimit; i++) {
+        const video = videoList[i];
+        loadVideo(video, userId, permission, dateFormat, videoTableBody);
+    }
+    videoLimit = newVideoLimit;
+}
+
 async function updateFilter() {
     if (userMapping === null) {
         await updateUserList();
     }
-
-    let userId = localStorage.getItem("userId");
-    let permission = localStorage.getItem("permission");
 
     let room = document.getElementById("filterRoom").value;
     let fromNode = document.getElementById("filterFromNode").value;
@@ -703,6 +882,7 @@ async function updateFilter() {
     
     // The backend supports pagination but we're not using it yet.
     // If we add a lot of videos, consider dynamically loading the table rows as the user scrolls down.
+    // For now, we dynamically populate the DOM as the user scrolls, but the JSON is still all loaded up-front.
     req.limit = 10000;
 
     frameOffsets = null;
@@ -713,178 +893,13 @@ async function updateFilter() {
         throw new Error(`HTTP ${result.status} fetching video list: ${await result.text()}`);
     }
 
-    let videoList = await result.json();
+    videoList = await result.json();
     document.getElementById("videoCount").innerText = videoList.length;
 
     let videoTableBody = document.getElementById("videoTableBody");
     videoTableBody.innerHTML = "";
-      
-    let dateFormat = new Intl.DateTimeFormat(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour12: false,
-        hour: 'numeric',
-        minute: '2-digit',
-    });
-    for (const video of videoList) {
-        let tr = document.createElement('tr');
-        tr.classList.add("video-row");
-        let td = document.createElement('td');
-        td.classList.add("p-2");
-        let row = document.createElement('div');
-        row.classList.add("row");
-
-        let imgCol = document.createElement('div');
-        imgCol.classList.add("text-center");
-        imgCol.classList.add("col-sm-4");
-        imgCol.classList.add("col-md-3");
-        imgCol.classList.add("col-lg-2");
-
-        let imgA = document.createElement('a');
-        imgA.href = "#";
-        let videoUrl = videoStorageClientUrl + "/mp4/" + video.id + ".mp4";
-        imgA.setAttribute("onclick", `startVideo('${videoUrl}');`);
-        imgA.setAttribute("data-bs-toggle", "modal");
-        imgA.setAttribute("data-bs-target", "#videoModal");
-        imgCol.appendChild(imgA);
-
-        let pngEl = document.createElement('img');
-        pngEl.classList.add("png");
-        pngEl.loading = "lazy";
-        pngEl.src = videoStorageClientUrl + "/png/" + video.id + ".png";
-        pngEl.style = "width:128px;";
-        imgA.appendChild(pngEl);
-
-        let webpEl = document.createElement('img');
-        webpEl.classList.add("webp");
-        webpEl.loading = "lazy";
-        webpEl.src = videoStorageClientUrl + "/png/" + video.id + ".png";
-        webpEl.fetchPriority = "low";
-        webpEl.style = "width:128px;";
-        imgA.appendChild(webpEl);
-        tr.addEventListener("mouseenter", function() {
-            webpEl.src = videoStorageClientUrl + "/webp/" + video.id + ".webp";
-        });
-
-        let textCol = document.createElement('div');
-        textCol.classList.add("col-sm-8");
-        textCol.classList.add("col-md-7");
-        textCol.classList.add("col-lg-8");
-
-        let pSubmitted = document.createElement('p');
-        pSubmitted.classList.add("m-0");
-        let createdUsername = userMapping[video.created_user_id];
-        let submittedTime = new Date();
-        submittedTime.setTime(video.submitted_ts);
-        let submittedTimeStr = dateFormat.format(submittedTime);
-        pSubmitted.innerHTML = `Submitted by <i>${createdUsername}</i> on ${submittedTimeStr}`;
-        textCol.appendChild(pSubmitted);
-
-        if (video.updated_ts != video.submitted_ts || video.updated_user_id != video.created_user_id) {
-            let pUpdated = document.createElement('p');
-            pUpdated.classList.add("m-0");
-            let updatedUsername = userMapping[video.updated_user_id];
-            let updatedTime = new Date();
-            updatedTime.setTime(video.updated_ts);
-            let updatedTimeStr = dateFormat.format(updatedTime);
-            pUpdated.innerHTML = `Updated by <i>${updatedUsername}</i> on ${updatedTimeStr}`;
-            textCol.appendChild(pUpdated);    
-        }
-
-        if (video.room_id !== null) {
-            let pRoom = document.createElement('p');
-            pRoom.classList.add("m-0");
-            pRoom.innerText = `Room: ${video.room_name}`;
-            textCol.appendChild(pRoom);    
-        }
-
-        if (video.from_node_id !== null) {
-            let pFromNode = document.createElement('p');
-            pFromNode.classList.add("m-0");
-            pFromNode.innerText = `From ${video.from_node_id}: ${video.from_node_name}`;
-            textCol.appendChild(pFromNode);    
-        }
-
-        if (video.to_node_id !== null) {
-            let pToNode = document.createElement('p');
-            pToNode.classList.add("m-0");
-            pToNode.innerText = `To ${video.to_node_id}: ${video.to_node_name}`;
-            textCol.appendChild(pToNode);
-        }
-
-        if (video.strat_id !== null) {
-            let pStrat = document.createElement('p');
-            pStrat.classList.add("m-0");
-            pStrat.innerText = `Strat ${video.strat_id}: ${video.strat_name}`;
-            textCol.appendChild(pStrat);    
-        }
-
-        if (video.priority !== null) {
-            let pPriority = document.createElement('p');
-            pPriority.classList.add("m-0");
-            pPriority.innerText = `Priority: ${video.priority}`;
-            textCol.appendChild(pPriority);
-        }
-
-        if (video.note !== "") {
-            let pNote = document.createElement('p');
-            pNote.classList.add("m-0");
-            pNote.innerText = `Note: ${video.note}`;
-            textCol.appendChild(pNote);    
-        }
-
-        if (video.dev_note !== "") {
-            let pDevNote = document.createElement('p');
-            pDevNote.classList.add("m-0");
-            pDevNote.innerText = `Dev Note: ${video.dev_note}`;
-            textCol.appendChild(pDevNote);    
-        }
-
-        let shareCol = document.createElement('div');
-        shareCol.classList.add("col-md-2");
-        shareCol.classList.add("text-end");
-
-        let videoIdText = document.createElement('div');
-        videoIdText.innerText = `Id: ${video.id}`;
-        shareCol.appendChild(videoIdText);
-
-        let shareButton = document.createElement('button');
-        shareButton.classList.add("btn");
-        shareButton.classList.add("btn-secondary");
-        shareButton.classList.add("my-1");
-        shareButton.classList.add("mx-1");
-        shareButton.classList.add("mx-md-0")
-        shareButton.setAttribute("onclick", `shareVideoLink(this, ${video.id})`);
-        shareButton.innerHTML = '<i class="bi bi-clipboard"></i> Share';
-        shareCol.appendChild(shareButton);
-
-        if (permission == "Editor" || (userId == video.created_user_id && video.status != "Approved")) {
-            let editButton = document.createElement('button');
-            editButton.classList.add("btn");
-            editButton.classList.add("btn-success");
-            editButton.classList.add("my-1");
-            editButton.classList.add("mx-1");
-            editButton.classList.add("mx-md-0")
-            editButton.setAttribute("onclick", `openEditVideo(${video.id})`);
-            // editButton.setAttribute("data-bs-toggle", "modal");
-            // editButton.setAttribute("data-bs-target", "#editModal");
-            editButton.innerHTML = '<i class="bi bi-pencil"></i> Edit';
-            shareCol.appendChild(editButton);    
-        }
-
-        let pStatus = document.createElement('p');
-        pStatus.classList.add("m-0");
-        pStatus.innerText = `Status: ${video.status}`;
-        shareCol.appendChild(pStatus);
-
-        row.appendChild(imgCol);
-        row.appendChild(textCol);
-        row.appendChild(shareCol);
-        td.appendChild(row);
-        tr.appendChild(td);
-        videoTableBody.appendChild(tr);
-    }
+    videoLimit = Math.min(Math.max(videoLimit, videoLimitIncrement), videoList.length);
+    loadVideoBatch(0, videoLimit);
 }
 
 async function downloadVideos() {
@@ -1613,6 +1628,18 @@ document.addEventListener('keydown', (ev) => {
       case "ArrowLeft":
         video.currentTime -= 5;
         break;
+    }
+});
+
+window.addEventListener('scroll', () => {
+    const bottomOfWindow = window.scrollY + window.innerHeight;
+    const bottomOfDocument = document.documentElement.scrollHeight;
+    const threshold = 5000; // 5000 pixels from the bottom
+
+    // Load more videos into DOM if scrolled close enough to bottom:
+    if (bottomOfWindow >= bottomOfDocument - threshold && videoLimit < videoList.length) {
+        let newVideoLimit = Math.min(videoLimit + videoLimitIncrement, videoList.length);
+        loadVideoBatch(videoLimit, newVideoLimit);
     }
 });
 
