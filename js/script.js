@@ -8,7 +8,7 @@ var animationFrameResolution = 3;
 var animationFrame = 0;
 var videoId = null;
 var videoList = [];
-var videoLimitIncrement = 50;
+var videoLimitIncrement = 10;
 var videoLimit = videoLimitIncrement;
 var numVideoParts = null;
 var startUploadKey = null;
@@ -1634,7 +1634,7 @@ document.addEventListener('keydown', (ev) => {
 window.addEventListener('scroll', () => {
     const bottomOfWindow = window.scrollY + window.innerHeight;
     const bottomOfDocument = document.documentElement.scrollHeight;
-    const threshold = 5000; // 5000 pixels from the bottom
+    const threshold = 1000; // 1000 pixels from the bottom
 
     // Load more videos into DOM if scrolled close enough to bottom:
     if (bottomOfWindow >= bottomOfDocument - threshold && videoLimit < videoList.length) {
