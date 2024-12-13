@@ -848,12 +848,13 @@ async function updateFilter() {
     let toNode = document.getElementById("filterToNode").value;
     let strat = document.getElementById("filterStrat").value;
     let user = document.getElementById("filterUser").value;
+    let status = document.getElementById("filterStatus").value;
     let statuses = [];
     
-    for (const s of document.getElementById("filterStatus").options) {
-        if (s.selected) {
-            statuses.push(s.value);
-        }
+    if (status == "") {
+        statuses = ["Approved", "Complete", "Incomplete", "Disabled"];
+    } else {
+        statuses = [status];
     }
 
     let req = {};
