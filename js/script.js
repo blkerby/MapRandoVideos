@@ -1017,6 +1017,7 @@ async function openEditVideo(id) {
 
     let highlightEndT = document.getElementById("edit-highlightEndTime");
     highlightEndT.value = video.highlight_end_t;
+    highlightEndT.min = video.highlight_start_t + 1;
     highlightEndT.removeAttribute("max");
 
     let priority = document.getElementById("edit-priority");
