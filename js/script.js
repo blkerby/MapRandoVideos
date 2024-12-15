@@ -849,6 +849,7 @@ async function updateFilter() {
     let strat = document.getElementById("filterStrat").value;
     let user = document.getElementById("filterUser").value;
     let status = document.getElementById("filterStatus").value;
+    let notes = document.getElementById("filterNotes").value;
     let statuses = [];
     
     if (status == "") {
@@ -877,6 +878,9 @@ async function updateFilter() {
     }
     if (filterVideoId !== null) {
         req.video_id = filterVideoId;
+    }
+    if (notes !== "") {
+        req.notes = notes;
     }
     req.status_list = statuses;
     req.sort_by = document.getElementById("filterSortBy").value;

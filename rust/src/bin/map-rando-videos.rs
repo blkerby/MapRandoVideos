@@ -10,8 +10,8 @@ use actix_web_httpauth::extractors::basic::BasicAuth;
 use anyhow::{bail, Context, Result};
 use askama::Template;
 use clap::Parser;
-use futures::executor::block_on;
 use core::str;
+use futures::executor::block_on;
 use futures_util::StreamExt as _;
 use log::{error, info};
 use map_rando_videos::{create_object_store, EncodingTask};
@@ -940,8 +940,11 @@ async fn download_video(
     let object_path_clone = object_path.clone();
 
     // This is CPU-heavy because of the decompression/recompression, so use a separate thread:
-    let output = actix_web::rt::task::spawn_blocking(move || block_on(download(&app_data, &object_path_clone)).unwrap()).await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    let output = actix_web::rt::task::spawn_blocking(move || {
+        block_on(download(&app_data, &object_path_clone)).unwrap()
+    })
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
     info!("responding with recompressed {}", object_path);
     Ok(HttpResponse::Ok().body(output))
 }
@@ -992,6 +995,7 @@ struct ListVideosRequest {
     user_id: Option<i32>,
     video_id: Option<i32>,
     status_list: String,
+    notes: Option<String>,
     sort_by: ListVideosSortBy,
     limit: Option<i64>,
     offset: Option<i64>,
@@ -1080,6 +1084,14 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
     if req.video_id.is_some() {
         sql_filters.push(format!("v.id = ${}", param_values.len() + 1));
         param_values.push(req.video_id.as_ref().unwrap());
+    }
+    if req.notes.is_some() {
+        sql_filters.push(format!(
+            "(v.note ILIKE '%' || ${} || '%' OR v.dev_note ILIKE '%' || ${} || '%')",
+            param_values.len() + 1,
+            param_values.len() + 1
+        ));
+        param_values.push(req.notes.as_ref().unwrap());
     }
     if req.user_id.is_some() {
         sql_filters.push(format!(
@@ -1704,7 +1716,10 @@ async fn main() {
         .format_timestamp_millis()
         .init();
 
-    info!("Working directory: {}", std::env::current_dir().unwrap().to_str().unwrap());
+    info!(
+        "Working directory: {}",
+        std::env::current_dir().unwrap().to_str().unwrap()
+    );
 
     let app_data = actix_web::web::Data::new(build_app_data().await);
 

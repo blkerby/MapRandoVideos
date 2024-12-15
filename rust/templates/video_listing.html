@@ -62,11 +62,6 @@
         <label for="filterStatus">Status</label>
     </div>
     <div class="col-lg-11 col-sm-10">
-        <style>
-            .my-multiselect {
-                border: var(--bs-border-width) solid var(--bs-border-color)
-            }
-        </style>
         <select id="filterStatus" class="form-select" onchange="updateFilter()">
             <option value="" selected>Filter by status</option>
             <option value="Incomplete">Incomplete</option>
@@ -74,6 +69,16 @@
             <option value="Approved">Approved</option>
             <option value="Disabled">Disabled</option>
         </select>
+    </div>
+</div>
+<div class="row my-2 align-items-center">
+    <div class="col-lg-1 col-sm-2 text-sm-end">
+        <label for="filterNotes">Notes</label>
+    </div>
+    <div class="col-lg-11 col-sm-10">
+        <div class="input-group">
+            <input id="filterNotes" class="form-control" type="text" placeholder="Search for text in Notes or Dev Notes" onchange="updateFilter()">
+        </div>
     </div>
 </div>
 
