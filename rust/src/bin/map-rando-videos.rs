@@ -1087,7 +1087,10 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
     }
     if req.notes.is_some() {
         sql_filters.push(format!(
-            "(v.note ILIKE '%' || ${} || '%' OR v.dev_note ILIKE '%' || ${} || '%')",
+            "(s.name ILIKE '%' || ${} || '%'
+             OR v.note ILIKE '%' || ${} || '%' 
+             OR v.dev_note ILIKE '%' || ${} || '%')",
+            param_values.len() + 1,
             param_values.len() + 1,
             param_values.len() + 1
         ));
