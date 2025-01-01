@@ -28,6 +28,7 @@ COPY --from=build /rust/target/release/video-encoder /app/video-encoder
 COPY --from=build /rust/target/release/sm-json-data-updater /app/sm-json-data-updater
 COPY --from=build /rust/target/release/trigger-encode-all /app/trigger-encode-all
 COPY /js /js
+COPY /css /css
 COPY /static /static
 WORKDIR /app
 ENTRYPOINT ["/app/map-rando-videos"]
