@@ -785,8 +785,7 @@ function loadVideo(video, userId, permission, dateFormat, videoTableBody) {
     shareButton.classList.add("btn");
     shareButton.classList.add("btn-secondary");
     shareButton.classList.add("my-1");
-    shareButton.classList.add("mx-1");
-    shareButton.classList.add("mx-md-0")
+    shareButton.classList.add("ms-2");
     shareButton.setAttribute("onclick", `shareVideoLink(this, ${video.id})`);
     shareButton.innerHTML = '<i class="bi bi-clipboard"></i> Share';
     shareCol.appendChild(shareButton);
@@ -796,8 +795,7 @@ function loadVideo(video, userId, permission, dateFormat, videoTableBody) {
         editButton.classList.add("btn");
         editButton.classList.add("btn-success");
         editButton.classList.add("my-1");
-        editButton.classList.add("mx-1");
-        editButton.classList.add("mx-md-0")
+        editButton.classList.add("ms-2");
         editButton.setAttribute("onclick", `openEditVideo(${video.id})`);
         // editButton.setAttribute("data-bs-toggle", "modal");
         // editButton.setAttribute("data-bs-target", "#editModal");
