@@ -1637,7 +1637,7 @@ document.addEventListener('keydown', (ev) => {
 
 window.addEventListener('scroll', () => {
     const bottomOfWindow = window.scrollY + window.innerHeight;
-    const bottomOfDocument = document.documentElement.scrollHeight;
+    const bottomOfDocument = document.getElementById("mainContainer").scrollHeight;
     const threshold = 1000; // 1000 pixels from the bottom
 
     // Load more videos into DOM if scrolled close enough to bottom:
