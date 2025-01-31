@@ -63,6 +63,10 @@ async fn bunny_purge_file(path: &str, app_data: &AppData) -> Result<()> {
     if !result.status().is_success() {
         let status = result.status();
         error!("Response body: {}", result.text().await?);
+        if status == 404 {
+            // Ignore 404 errors, as it can be normal in case this is a new file.
+            return Ok(());
+        }
         bail!("Error purging Bunny cache: {:?}", status);
     }
     Ok(())
