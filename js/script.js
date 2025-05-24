@@ -851,7 +851,7 @@ async function updateFilter() {
     let statuses = [];
     
     if (status == "") {
-        statuses = ["Approved", "Complete", "Incomplete", "Disabled"];
+        statuses = ["Approved", "Complete", "Incomplete", "Postponed", "Disabled"];
     } else {
         statuses = [status];
     }

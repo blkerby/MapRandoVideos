@@ -148,10 +148,16 @@ async fn home(app_data: web::Data<AppData>, query: web::Query<HomeQuery>) -> imp
         video_storage_client_url: app_data.args.video_storage_client_url.clone(),
         video_id: query.video_id,
         og_title: None,
-        video_statuses: vec!["Incomplete", "Complete", "Approved", "Disabled"]
-            .into_iter()
-            .map(|x| x.to_string())
-            .collect(),
+        video_statuses: vec![
+            "Incomplete",
+            "Complete",
+            "Approved",
+            "Postponed",
+            "Disabled",
+        ]
+        .into_iter()
+        .map(|x| x.to_string())
+        .collect(),
         difficulty_levels: get_difficulty_levels(),
     };
     HttpResponse::Ok()
@@ -196,10 +202,16 @@ async fn video_html(
         video_storage_client_url: app_data.args.video_storage_client_url.clone(),
         video_id: Some(*video_id),
         og_title,
-        video_statuses: vec!["Incomplete", "Complete", "Approved", "Disabled"]
-            .into_iter()
-            .map(|x| x.to_string())
-            .collect(),
+        video_statuses: vec![
+            "Incomplete",
+            "Complete",
+            "Approved",
+            "Postponed",
+            "Disabled",
+        ]
+        .into_iter()
+        .map(|x| x.to_string())
+        .collect(),
         difficulty_levels: get_difficulty_levels(),
     };
     Ok(HttpResponse::Ok()
@@ -1007,6 +1019,7 @@ enum VideoStatus {
     Incomplete,
     Complete,
     Approved,
+    Postponed,
     Disabled,
 }
 
