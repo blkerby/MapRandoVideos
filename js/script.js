@@ -484,6 +484,16 @@ async function updateStratOptions(roomDomId, stratDomId, fromDomId, toDomId) {
     }
 }
 
+function editStratSelect() {
+    let stratSelect = document.getElementById("editStrat");
+    let status = document.getElementById("editStatus");
+    if (status.value == "Incomplete" && stratSelect.value != "") {
+        // After selecting a strat, automatically change Incomplete to Complete.
+        // This is usually what is wanted, but the user can still override it manually.
+        status.value = "Complete";
+    }
+}
+
 function enableAnimation(domIdPrefix) {
     animationEnabled = true;
     animationDomPrefix = domIdPrefix;

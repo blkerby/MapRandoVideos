@@ -651,7 +651,7 @@ async fn try_edit_video(
     account_info: &AccountInfo,
 ) -> Result<()> {
     info!("edit_video: {}", std::str::from_utf8(&req_json)?);
-    let mut req: EditVideoRequest = serde_json::from_slice(&req_json)?;
+    let req: EditVideoRequest = serde_json::from_slice(&req_json)?;
 
     let db_client = app_data.db.get().await.unwrap();
     match account_info.permission {
@@ -681,18 +681,6 @@ async fn try_edit_video(
             if created_account_id != account_info.id {
                 bail!("Not authorized to edit video by different creator");
             }
-        }
-    }
-
-    if req.status == VideoStatus::Incomplete || req.status == VideoStatus::Complete {
-        if req.room_id.is_some()
-            && req.from_node_id.is_some()
-            && req.to_node_id.is_some()
-            && req.strat_id.is_some()
-        {
-            req.status = VideoStatus::Complete;
-        } else {
-            req.status = VideoStatus::Incomplete;
         }
     }
 
