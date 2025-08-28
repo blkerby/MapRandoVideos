@@ -86,6 +86,10 @@ Interested in contributing? Check out the
                     <li>File > Movie > Stop Movie</li>
                     <li>File > Movie > Play Movie</li>
                     <li>File > AVI/WAV > Config and Record AVI/WAV: select "AVI writer" and "Full frames (Uncompressed)"</li>
+                    <ul>
+                    <li>On Linux, instead select "FFmpeg writer" and use the following "[Custom]" command:<br> 
+                    <code>-c:a pcm_s16le -c:v rawvideo -f avi -pix_fmt bgr24 -vf vflip -flipped_raw_rgb true</code></li>
+                    </ul>
                     <li>Unpause the emulator</li>
                     <li>Pause the emulator when the movie reaches the desired stopping point</li>
                     <li>File > AVI/WAV > Stop AVI/WAV</li>
