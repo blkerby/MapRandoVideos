@@ -132,8 +132,11 @@ fn get_difficulty_levels() -> Vec<String> {
         "Hard",
         "Very Hard",
         "Expert",
+        "Expert+",
         "Extreme",
+        "Extreme+",
         "Insane",
+        "Insane+",
         "Beyond",
         "Ignored",
     ]
