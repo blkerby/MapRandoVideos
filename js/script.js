@@ -59,6 +59,10 @@ async function loadAVIMetadata(file, localFrameOffsets) {
     let width = headerDV.getUint32(avihStart + 32, true);
     let height = headerDV.getUint32(avihStart + 36, true);
     
+    if (width != 256 || height != 224) { 
+        return Promise.reject(`unexpected video dimensions: ${width} x ${height}`);
+    }
+
     var strlStart = avihStart + avihSize;
     if (headerDV.getUint32(strlStart) != 0x4C495354) {
         return Promise.reject("bad header: strl LIST");
