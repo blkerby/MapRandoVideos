@@ -100,15 +100,15 @@ fn update_repo(repo: &Repository, branch: &str) {
 
 pub fn create_repo(url: &str, branch: &str, path_str: &str) -> Repository {
     let path = Path::new(path_str);
-    if !path.exists() {
+    let repo = if !path.exists() {
         info!("Cloning repo {} into {}", url, path_str);
         Repository::clone(url, path).expect("Error cloning git repository")
     } else {
         info!("Opening existing repo at {}", path_str);
-        let repo = Repository::open(path).expect("Error opening git repository");
-        update_repo(&repo, branch);
-        repo
-    }
+        Repository::open(path).expect("Error opening git repository")
+    };
+    update_repo(&repo, branch);
+    repo
 }
 
 fn get_area_order() -> Vec<String> {
@@ -458,7 +458,10 @@ async fn write_notable_table(app_data: &AppData, notables: &[NotableData]) -> Re
     Ok(())
 }
 
-async fn write_notable_strat_table(app_data: &AppData, notable_strats: &[NotableStratData]) -> Result<()> {
+async fn write_notable_strat_table(
+    app_data: &AppData,
+    notable_strats: &[NotableStratData],
+) -> Result<()> {
     let mut db = app_data.db.get().await?;
     let tran = db.transaction().await?;
     let stmt = tran.prepare_cached("TRUNCATE TABLE notable_strat").await?;
