@@ -81,6 +81,7 @@ struct NotableData {
     name: String,
 }
 
+#[derive(Eq, Ord, PartialEq, PartialOrd)]
 struct NotableStratData {
     room_id: i32,
     notable_id: i32,
@@ -299,6 +300,9 @@ fn load_sm_data_summary(git_repo: &Repository) -> Result<SMJsonDataSummary> {
                 .with_context(|| format!("Processing tech {:?}", tech_json["name"].as_str()))?;
         }
     }
+
+    notable_strats.sort();
+    notable_strats.dedup();
 
     Ok(SMJsonDataSummary {
         areas,
