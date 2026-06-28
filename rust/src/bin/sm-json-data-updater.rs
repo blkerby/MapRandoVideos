@@ -1,6 +1,16 @@
-use std::{collections::HashMap, fs, path::Path, sync::Mutex};
+use std::{
+    collections::HashMap,
+    fs,
+    path::Path,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+};
 
-use actix_web::{self, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{
+    self, get, middleware::Logger, post, web, App, HttpResponse, HttpServer, Responder,
+};
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::pin_mut;
@@ -33,6 +43,7 @@ struct AppData {
     git_repository: Mutex<Repository>,
     git_branch: String,
     db: deadpool_postgres::Pool,
+    update_in_progress: AtomicBool,
 }
 
 struct SMJsonDataSummary {
@@ -509,9 +520,7 @@ async fn update_node_ids(app_data: &AppData) -> Result<()> {
     Ok(())
 }
 
-async fn update_tables(git_repo: &Repository, app_data: &AppData) -> Result<()> {
-    info!("Loading sm-json-data summary");
-    let summary = load_sm_data_summary(git_repo)?;
+async fn update_tables(app_data: &AppData, summary: &SMJsonDataSummary) -> Result<()> {
     info!("Rewriting database tables");
     write_area_table(app_data, &summary.areas).await?;
     write_room_table(app_data, &summary.rooms).await?;
@@ -525,12 +534,45 @@ async fn update_tables(git_repo: &Repository, app_data: &AppData) -> Result<()> 
     Ok(())
 }
 
+async fn run_update(app_data: &AppData, fetch_updates: bool) -> Result<()> {
+    if app_data
+        .update_in_progress
+        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        .is_err()
+    {
+        anyhow::bail!("Update already in progress");
+    }
+
+    let git_repo = app_data.git_repository.lock().unwrap();
+    if fetch_updates {
+        update_repo(&git_repo, &app_data.git_branch);
+    }
+    info!("Loading sm-json-data summary");
+    let summary = load_sm_data_summary(&git_repo)?;
+    let result = update_tables(app_data, &summary).await;
+
+    app_data.update_in_progress.store(false, Ordering::Release);
+    result
+}
+
+#[get("/health")]
+async fn health(app_data: web::Data<AppData>) -> impl Responder {
+    if app_data.update_in_progress.load(Ordering::Acquire) {
+        HttpResponse::ServiceUnavailable().body("update in progress")
+    } else {
+        HttpResponse::Ok().body("ok")
+    }
+}
+
 #[post("/update")]
 async fn update_data(app_data: web::Data<AppData>) -> impl Responder {
-    let git_repo = app_data.git_repository.lock().unwrap();
-    update_repo(&git_repo, &app_data.git_branch);
-    update_tables(&git_repo, &app_data).await.unwrap();
-    HttpResponse::Ok().body("")
+    match run_update(&app_data, true).await {
+        Ok(()) => HttpResponse::Ok().body(""),
+        Err(e) if e.to_string() == "Update already in progress" => {
+            HttpResponse::ServiceUnavailable().body(e.to_string())
+        }
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
 }
 
 fn build_app_data() -> AppData {
@@ -556,6 +598,7 @@ fn build_app_data() -> AppData {
         )),
         git_branch: args.git_repo_branch,
         db: db_pool,
+        update_in_progress: AtomicBool::new(false),
     };
 
     app_data
@@ -568,12 +611,13 @@ async fn main() -> Result<()> {
         .init();
 
     let app_data = actix_web::web::Data::new(build_app_data());
-    update_tables(&app_data.git_repository.lock().unwrap(), &app_data).await?;
+    run_update(&app_data, false).await?;
 
     HttpServer::new(move || {
         App::new()
             .app_data(app_data.clone())
             .wrap(Logger::default())
+            .service(health)
             .service(update_data)
     })
     .workers(1)
