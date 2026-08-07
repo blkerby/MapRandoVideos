@@ -1002,6 +1002,7 @@ struct ListVideosRequest {
     sort_by: ListVideosSortBy,
     limit: Option<i64>,
     offset: Option<i64>,
+    include_count: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, strum::EnumString, Debug, Eq, PartialEq)]
@@ -1035,11 +1036,21 @@ struct VideoListing {
     priority: Option<i32>,
 }
 
-async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<Vec<VideoListing>> {
+#[derive(Serialize)]
+struct ListVideosResponse {
+    videos: Vec<VideoListing>,
+    total_count: Option<i64>,
+}
+
+async fn try_list_videos(
+    req: &ListVideosRequest,
+    app_data: &AppData,
+) -> Result<ListVideosResponse> {
     let mut sql_parts: Vec<String> = vec![];
     sql_parts.push(format!(
         r#"
         SELECT 
+            {}
             v.id,
             v.created_account_id,
             v.submitted_ts,
@@ -1062,7 +1073,12 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
         LEFT JOIN node f ON f.room_id = v.room_id AND f.node_id = v.from_node_id
         LEFT JOIN node t ON t.room_id = v.room_id AND t.node_id = v.to_node_id
         LEFT JOIN strat s ON s.room_id = v.room_id AND s.strat_id = v.strat_id
-        "#
+        "#,
+        if req.include_count.unwrap_or(false) {
+            "COUNT(*) OVER() AS total_count,"
+        } else {
+            ""
+        }
     ));
 
     let mut sql_filters: Vec<String> = vec![];
@@ -1118,13 +1134,13 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
 
     match req.sort_by {
         ListVideosSortBy::SubmittedTimestamp => {
-            sql_parts.push("ORDER BY v.submitted_ts DESC\n".to_string());
+            sql_parts.push("ORDER BY v.submitted_ts DESC, v.id\n".to_string());
         }
         ListVideosSortBy::SubmittedTimestampFirst => {
-            sql_parts.push("ORDER BY v.submitted_ts\n".to_string());
+            sql_parts.push("ORDER BY v.submitted_ts, v.id\n".to_string());
         }
         ListVideosSortBy::UpdatedTimestamp => {
-            sql_parts.push("ORDER BY v.updated_ts DESC\n".to_string());
+            sql_parts.push("ORDER BY v.updated_ts DESC, v.id\n".to_string());
         }
         ListVideosSortBy::LogicOrder => {
             sql_parts.push("ORDER BY r.area_id, r.name, v.from_node_id, v.to_node_id, v.strat_id, v.priority, v.id\n".to_string());
@@ -1145,6 +1161,11 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
 
     let stmt = db_client.prepare_cached(&sql).await?;
     let result = db_client.query(&stmt, param_values.as_slice()).await?;
+    let total_count = if req.include_count.unwrap_or(false) {
+        result.first().map(|row| row.get("total_count")).or(Some(0))
+    } else {
+        None
+    };
     let mut out: Vec<VideoListing> = vec![];
     for row in result {
         let submitted_ts: chrono::DateTime<chrono::offset::Utc> = row.get("submitted_ts");
@@ -1171,7 +1192,10 @@ async fn try_list_videos(req: &ListVideosRequest, app_data: &AppData) -> Result<
         });
     }
 
-    Ok(out)
+    Ok(ListVideosResponse {
+        videos: out,
+        total_count,
+    })
 }
 
 #[get("/list-videos")]

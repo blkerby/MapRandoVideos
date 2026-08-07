@@ -3,8 +3,8 @@ CREATE TABLE account (
     username varchar(100) NOT NULL,
     token_hash bytea NOT NULL,
     permission varchar(100) NOT NULL,
-    created_ts timestamptz default current_timestamp
-    active boolean default FALSE,
+    created_ts timestamptz default current_timestamp,
+    active boolean default FALSE
 );
 
 CREATE TABLE video (

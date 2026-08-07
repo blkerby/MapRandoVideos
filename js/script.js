@@ -9,7 +9,10 @@ var animationFrame = 0;
 var videoId = null;
 var videoList = [];
 var videoLimitIncrement = 10;
-var videoLimit = videoLimitIncrement;
+var totalVideoCount = 0;
+var videoListRequest = null;
+var videoRequestInProgress = false;
+var pendingFilterUpdate = false;
 var numVideoParts = null;
 var startUploadKey = null;
 var finishUploadKey = null;
@@ -847,12 +850,74 @@ async function loadVideoBatch(oldVideoLimit, newVideoLimit) {
         const video = videoList[i];
         loadVideo(video, userId, permission, dateFormat, videoTableBody);
     }
-    videoLimit = newVideoLimit;
+}
+
+function nearVideoListBottom() {
+    return window.scrollY + window.innerHeight >=
+        document.getElementById("mainContainer").scrollHeight - 1000;
+}
+
+async function loadNextVideoPage() {
+    if (videoRequestInProgress || videoListRequest === null || videoList.length >= totalVideoCount) {
+        return;
+    }
+
+    videoRequestInProgress = true;
+    const offset = videoList.length;
+    const req = {...videoListRequest, limit: videoLimitIncrement, offset: offset};
+    if (offset === 0) {
+        req.include_count = true;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let loaded = false;
+
+    try {
+        const result = await fetch(`/list-videos?${new URLSearchParams(req)}`, {
+            signal: controller.signal,
+        });
+        if (!result.ok) {
+            throw new Error(`HTTP ${result.status} fetching video list: ${await result.text()}`);
+        }
+        const response = await result.json();
+        if (pendingFilterUpdate) {
+            return;
+        }
+
+        if (offset === 0) {
+            videoList = [];
+            totalVideoCount = response.total_count;
+            document.getElementById("videoCount").innerText = totalVideoCount;
+            document.getElementById("videoTableBody").innerHTML = "";
+        }
+        videoList.push(...response.videos);
+        loadVideoBatch(offset, videoList.length);
+        loaded = response.videos.length > 0;
+    } catch (error) {
+        console.error(error);
+    } finally {
+        clearTimeout(timeout);
+        videoRequestInProgress = false;
+        if (pendingFilterUpdate) {
+            pendingFilterUpdate = false;
+            updateFilter();
+        } else if (loaded && nearVideoListBottom()) {
+            loadNextVideoPage();
+        }
+    }
 }
 
 async function updateFilter() {
+    if (videoRequestInProgress) {
+        pendingFilterUpdate = true;
+        return;
+    }
     if (userMapping === null) {
         await updateUserList();
+    }
+    if (videoRequestInProgress) {
+        pendingFilterUpdate = true;
+        return;
     }
 
     let room = document.getElementById("filterRoom").value;
@@ -897,26 +962,11 @@ async function updateFilter() {
     req.status_list = statuses;
     req.sort_by = document.getElementById("filterSortBy").value;
     
-    // The backend supports pagination but we're not using it yet.
-    // If we add a lot of videos, consider dynamically loading the table rows as the user scrolls down.
-    // For now, we dynamically populate the DOM as the user scrolls, but the JSON is still all loaded up-front.
-    req.limit = 10000;
-
     frameOffsets = null;
-
-    let params = new URLSearchParams(req).toString();
-    let result = await fetch(`/list-videos?${params}`);
-    if (!result.ok) {
-        throw new Error(`HTTP ${result.status} fetching video list: ${await result.text()}`);
-    }
-
-    videoList = await result.json();
-    document.getElementById("videoCount").innerText = videoList.length;
-
-    let videoTableBody = document.getElementById("videoTableBody");
-    videoTableBody.innerHTML = "";
-    videoLimit = Math.min(Math.max(videoLimit, videoLimitIncrement), videoList.length);
-    loadVideoBatch(0, videoLimit);
+    videoListRequest = req;
+    videoList = [];
+    totalVideoCount = 1;
+    await loadNextVideoPage();
 }
 
 async function downloadVideos() {
@@ -1650,14 +1700,8 @@ document.addEventListener('keydown', (ev) => {
 });
 
 window.addEventListener('scroll', () => {
-    const bottomOfWindow = window.scrollY + window.innerHeight;
-    const bottomOfDocument = document.getElementById("mainContainer").scrollHeight;
-    const threshold = 1000; // 1000 pixels from the bottom
-
-    // Load more videos into DOM if scrolled close enough to bottom:
-    if (bottomOfWindow >= bottomOfDocument - threshold && videoLimit < videoList.length) {
-        let newVideoLimit = Math.min(videoLimit + videoLimitIncrement, videoList.length);
-        loadVideoBatch(videoLimit, newVideoLimit);
+    if (nearVideoListBottom()) {
+        loadNextVideoPage();
     }
 });
 
